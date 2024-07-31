@@ -18,6 +18,7 @@ from project_huishoudboekje.graphs import \
 from project_huishoudboekje.page_layouts import get_nav_bar, get_page_1_graphs, get_page_1_selector, \
     get_page_1_table_actuals, get_page_1_table_budget, get_page_2_table, get_page_2_button
 
+
 class App(object):
     def run(self):
 

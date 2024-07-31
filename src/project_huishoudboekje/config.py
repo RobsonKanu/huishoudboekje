@@ -4,17 +4,20 @@ from dash.dash_table.Format import Format, Group, Symbol, Scheme
 
 import dash_bootstrap_components as dbc
 
+
 class GeneralSettings(object):
 
-    project_path = Path(r'C:\Users\robsc\Documents\Python\Huishoudboekje')
+    project_path = Path(r'C:\Users\robsc\Documents\Projecten\huishoudboekje')
 
     year_selected = 2024
 
     file_plaatsnaam = 'Woonplaatsen_in_Nederland_2020_07062022_225527'
 
+
 class AppSettings(object):
 
     style_sheet = [dbc.themes.UNITED]
+
 
 class TransactionSettings(object):
 
@@ -25,6 +28,7 @@ class TransactionSettings(object):
     be_iban = 'BE[0-9][0-9] [0-9][0-9][0-9][0-9] [0-9][0-9][0-9][0-9] [0-9][0-9][0-9][0-9] '
 
     rgx_trans = '[0-9][0-9]-[0-9][0-9] [a-z][a-z].+?(?=Verwerkingsdatum: [0-9][0-9]-[0-9][0-9]-202[0-9])'
+
 
 class TableSettings(object):
 

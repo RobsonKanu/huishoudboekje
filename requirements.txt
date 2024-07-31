@@ -3,3 +3,4 @@ pandas
 openpyxl
 dash
 dash_bootstrap_components
+PyPDF2
