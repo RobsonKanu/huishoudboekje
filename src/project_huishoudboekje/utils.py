@@ -1,4 +1,6 @@
 
+import pandas as pd
+
 from dateutil.relativedelta import relativedelta
 
 def string_to_float(string):
@@ -24,7 +26,7 @@ def check_previous_month(df, df_new, idx, amount, fin_type):
         list_cats = df_sel[['AMOUNT', 'CATEGORY']].values.tolist()
 
         if len(list_cats) > 1:
-            df_new = df_new.append([df_new.loc[idx]] * (len(list_cats) - 1))
+            df_new = pd.concat([df_new, pd.DataFrame([df_new.loc[idx]] * (len(list_cats) - 1))])
 
             df_new.loc[idx, ['AMOUNT', 'CATEGORY']] = list_cats
         else:

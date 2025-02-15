@@ -23,7 +23,8 @@ class FindCategory(object):
         df = self.assign_category(df)
 
         df = df.reset_index().merge(
-            df_categories, how='left', left_on='CATEGORY', right_on='CATEGORY').set_index('TRANS_ID')
+            df_categories, how='left', left_on='CATEGORY', right_on='CATEGORY').rename(
+            columns={'index': 'TRANS_ID'}).set_index('TRANS_ID')
 
         return df.reindex(columns=['DATE', 'SOURCE', 'TRANSACTION_TYPE', 'FINANCIAL_TYPE', 'PARTY', 'AMOUNT',
                                    'CATEGORY', 'ANALYSE_IND', 'GROUP'])

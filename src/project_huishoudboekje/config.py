@@ -9,7 +9,7 @@ class GeneralSettings(object):
 
     project_path = Path(r'C:\Users\robsc\Documents\Projecten\huishoudboekje')
 
-    year_selected = 2024
+    year_selected = 2025
 
     file_plaatsnaam = 'Woonplaatsen_in_Nederland_2020_07062022_225527'
 
