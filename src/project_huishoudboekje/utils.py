@@ -3,6 +3,7 @@ import pandas as pd
 
 from dateutil.relativedelta import relativedelta
 
+
 def string_to_float(string):
 
     try:
@@ -22,7 +23,7 @@ def check_previous_month(df, df_new, idx, amount, fin_type):
     date_sel = df_sel['DATE'].iloc[0].day
 
     if df_sel.AMOUNT.sum() == amount and df_sel['FINANCIAL_TYPE'].iloc[0] == fin_type and \
-            date_sel >= max(previous_date.day - 4, 1) and date_sel <= max(previous_date.day + 4, 31):
+            max(previous_date.day - 4, 1) <= date_sel <= max(previous_date.day + 4, 31):
         list_cats = df_sel[['AMOUNT', 'CATEGORY']].values.tolist()
 
         if len(list_cats) > 1:

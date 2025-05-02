@@ -3,6 +3,9 @@ from project_huishoudboekje.config import GeneralSettings
 
 import pandas as pd
 
+from shutil import move
+
+
 class ReadAsn(object):
 
     def run(self, list_files):
@@ -13,11 +16,15 @@ class ReadAsn(object):
 
             list_out.append(df)
 
+            move(GeneralSettings.project_path / f'data/ASN Bank/{file}',
+                 GeneralSettings.project_path / f'data/archive/{file}')
+
         df_full = pd.concat(list_out, ignore_index=True)
 
         df_out = self.prepare_data_asn(df_full)
 
         return df_out
+
 
     def prepare_data_asn(self, df):
 

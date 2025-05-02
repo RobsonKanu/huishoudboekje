@@ -1,7 +1,6 @@
 
 import plotly.express as px
 
-import pandas as pd
 
 def graph_group_month(df_analysis):
 

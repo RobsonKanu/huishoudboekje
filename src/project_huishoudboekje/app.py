@@ -2,9 +2,7 @@
 import plotly.express as px
 from dash import dash_table, Dash, html, dcc
 from dash.dependencies import Input, Output, State
-from dash.dash_table.Format import Format, Scheme, Sign, Symbol, Group
 from dash.dash_table import FormatTemplate
-import dash_bootstrap_components as dbc
 
 import uuid
 import numpy as np

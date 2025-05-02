@@ -6,8 +6,6 @@ import dash_bootstrap_components as dbc
 
 from project_huishoudboekje.config import TableSettings
 
-from project_huishoudboekje.graphs import \
-    graph_group_month, graph_groups, graph_total, graph_total_delta, graph_groups_delta
 
 def get_nav_bar():
 
