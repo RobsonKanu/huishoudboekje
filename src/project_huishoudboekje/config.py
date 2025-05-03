@@ -27,3 +27,18 @@ class TableSettings(object):
                          symbol=Symbol.yes,
                          symbol_prefix=u'€ '
                          )
+
+
+class FigureSettings(object):
+
+    group_colors = {
+        'Aankopen': '#636EFA',
+        'Auto en vervoer': '#EF553B',
+        'Giften': '#00CC96',
+        'Leven en entertainment': '#AB63FA',
+        'Overig': '#FFA15A',
+        'Verzekeringen': '#19D3F3',
+        'Verzorging en gezondheid': '#FF6692',
+        # 'Woning': '#B6E880',
+        'Woonlasten': '#B6E880'
+    }

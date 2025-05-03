@@ -91,7 +91,7 @@ class App(object):
                     df_sel[col] = 0.0
 
             df_sel['Total'] = df_sel[month_names].sum(axis=1)
-            df_sel = df_sel.fillna(0).sort_values(by=['Total'], ascending=False)
+            df_sel = df_sel.fillna(0).sort_values(by=['CATEGORY'], ascending=True)
             df_sel.loc['Total'] = df_sel.sum()
             df_sel.loc['Total', 'CATEGORY'] = 'Total'
 
@@ -110,7 +110,7 @@ class App(object):
                     df_sel[col] = 0.0
 
             df_sel['Total'] = df_sel[month_names].sum(axis=1)
-            df_sel = df_sel.fillna(0).sort_values(by=['Total'], ascending=False)
+            df_sel = df_sel.fillna(0).sort_values(by=['CATEGORY'], ascending=True)
             df_sel.loc['Total'] = df_sel.sum()
             df_sel.loc['Total', 'CATEGORY'] = 'Total'
 

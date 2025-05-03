@@ -8,7 +8,7 @@ from project_huishoudboekje.config import GeneralSettings
 
 class StoreResults(object):
 
-    # TODO: store input in processed folder
+
     def run(self, df):
 
         if os.path.exists(GeneralSettings.project_path / 'data/processed/transactions.xlsx'):

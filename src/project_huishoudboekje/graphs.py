@@ -1,6 +1,8 @@
 
 import plotly.express as px
 
+from project_huishoudboekje.config import FigureSettings
+
 
 def graph_group_month(df_analysis):
 
@@ -14,16 +16,8 @@ def graph_group_month(df_analysis):
 
     fig = px.bar(df_stack, x='Month', y='Percentage', color='Group',
                  category_orders={
-                     'Group': ['Aankopen', 'Auto en vervoer', 'Giften', 'Leven en entertainment', 'Overig',
-                               'Verzekeringen', 'Verzorging en gezondheid', 'Woning']},
-                 color_discrete_map={'Aankopen': '#636EFA',
-                                     'Auto en vervoer': '#EF553B',
-                                     'Giften': '#00CC96',
-                                     'Leven en entertainment': '#AB63FA',
-                                     'Overig': '#FFA15A',
-                                     'Verzekeringen': '#19D3F3',
-                                     'Verzorging en gezondheid': '#FF6692',
-                                     'Woning': '#B6E880'}
+                     'Group': list(FigureSettings.group_colors.keys())},
+                 color_discrete_map=FigureSettings.group_colors
                  )
     fig.update_layout(title="Expense distribution per month",
                       title_y=1,
@@ -53,16 +47,9 @@ def graph_groups(df_analysis, title_name):
     fig = px.bar(df_stack, x='Group', y='Amount',
                  color='Group',
                  category_orders={
-                     'Group': ['Aankopen', 'Auto en vervoer', 'Giften', 'Leven en entertainment', 'Overig',
-                               'Verzekeringen', 'Verzorging en gezondheid', 'Woning']},
-                 color_discrete_map={'Aankopen': '#636EFA',
-                                     'Auto en vervoer': '#EF553B',
-                                     'Giften': '#00CC96',
-                                     'Leven en entertainment': '#AB63FA',
-                                     'Overig': '#FFA15A',
-                                     'Verzekeringen': '#19D3F3',
-                                     'Verzorging en gezondheid': '#FF6692',
-                                     'Woning': '#B6E880'})
+                     'Group': list(FigureSettings.group_colors.keys())},
+                 color_discrete_map=FigureSettings.group_colors
+                 )
 
     fig.update_layout(title=title_name, showlegend=False, yaxis_title=None, xaxis={'type': 'category'},
                       xaxis_title=None, margin=dict(l=20, r=20, t=30, b=20))
@@ -77,7 +64,7 @@ def graph_total(df_analysis, title_name):
         columns={'AMOUNT_NW': 'Amount'})
 
     fig = px.bar(df_stack, x='YEAR_MONTH', y='Amount', color='INCOME_IND', barmode='group',
-                  color_discrete_sequence=["#B6E880", "#EF553B"])
+                 color_discrete_sequence=["#B6E880", "#EF553B"])
     fig.update_layout(title=title_name, showlegend=False, yaxis_title=None, xaxis={'type': 'category'},
                       xaxis_title=None, margin=dict(l=20, r=20, t=30, b=20))
 
@@ -120,18 +107,10 @@ def graph_groups_delta(df_budget, df_analysis):
     df_total_stack['COLORMAP'] = df_total_stack['DELTA'].apply(lambda x: "#B6E880" if x > 0 else "#EF553B")
 
     fig = px.bar(df_total_stack, x='Group', y='DELTA',
-                 #color='Group',
                  category_orders={
-                     'Group': ['Aankopen', 'Auto en vervoer', 'Giften', 'Leven en entertainment', 'Overig',
-                               'Verzekeringen', 'Verzorging en gezondheid', 'Woning']},
-                 color_discrete_map={'Aankopen': '#636EFA',
-                                     'Auto en vervoer': '#EF553B',
-                                     'Giften': '#00CC96',
-                                     'Leven en entertainment': '#AB63FA',
-                                     'Overig': '#FFA15A',
-                                     'Verzekeringen': '#19D3F3',
-                                     'Verzorging en gezondheid': '#FF6692',
-                                     'Woning': '#B6E880'})
+                     'Group': list(FigureSettings.group_colors.keys())},
+                 color_discrete_map=FigureSettings.group_colors
+                 )
 
     fig.update_traces(marker={'color': df_total_stack['COLORMAP']}, selector=dict(type='bar'))
 
