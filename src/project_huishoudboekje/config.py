@@ -42,3 +42,25 @@ class FigureSettings(object):
         # 'Woning': '#B6E880',
         'Woonlasten': '#B6E880'
     }
+
+
+class DatabaseSettings:
+    database_name = 'houdhoudboekje.db'
+
+    sql_statements = [
+        """CREATE TABLE IF NOT EXISTS categories (
+                id text PRIMARY KEY, 
+                grouplevel text NOT NULL, 
+                category text NOT NULL,
+                begin_year INT, 
+                end_year INT
+            );""",
+        """CREATE TABLE IF NOT EXISTS budget (
+                id text PRIMARY KEY,
+                grouplevel text NOT NULL,
+                category text NOT NULL,
+                year_month text NOT NULL,
+                amount real NOT NULL,
+                source_file text NOT NULL
+        )"""
+    ]

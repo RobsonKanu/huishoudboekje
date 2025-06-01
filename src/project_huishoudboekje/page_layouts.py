@@ -23,7 +23,8 @@ def get_nav_bar():
                                 dbc.Nav([
                                     dbc.NavItem(dbc.NavLink("Dashboard", href="/dashboard")),
                                     dbc.NavItem(dbc.NavLink("Budget vs Actuals", href="/budget")),
-                                    dbc.NavItem(dbc.NavLink("Data", href="/data"))
+                                    dbc.NavItem(dbc.NavLink("Data", href="/data")),
+                                    dbc.NavItem(dbc.NavLink('Settings', href="/settings")),
                                 ], className="w-100")
                             ], id="navbar-collapse", is_open=False, navbar=True)
                         ], className="flex-grow-1"),

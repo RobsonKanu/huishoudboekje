@@ -8,6 +8,7 @@ from project_huishoudboekje.find_category import FindCategory
 from project_huishoudboekje.store_results import StoreResults
 from project_huishoudboekje.app import App
 
+
 def run():
     filenames_rabobank = next(os.walk(GeneralSettings.project_path / f'data/Rabobank'), (None, None, []))[2]
     filenames_asn_bank = next(os.walk(GeneralSettings.project_path / f'data/ASN Bank'), (None, None, []))[2]

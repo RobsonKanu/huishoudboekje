@@ -1,6 +1,7 @@
 
 import plotly.express as px
-from dash import dash_table, Dash, html, dcc
+import dash_bootstrap_components as dbc
+from dash import dash_table, Dash, html, dcc, ctx
 from dash.dependencies import Input, Output, State
 from dash.dash_table import FormatTemplate
 
@@ -15,6 +16,7 @@ from project_huishoudboekje.graphs import \
     graph_group_month, graph_groups, graph_total, graph_total_delta, graph_groups_delta
 from project_huishoudboekje.page_layouts import get_nav_bar, get_page_1_graphs, get_page_1_selector, \
     get_page_1_table_actuals, get_page_1_table_budget, get_page_2_table, get_page_2_button
+from project_huishoudboekje.database import connect_to_database, read_sql_table_cats
 
 
 class App(object):
@@ -31,9 +33,13 @@ class App(object):
         df = df[(df['DATE'] >= f'{sel_year}-01-01') & (df['DATE'] < f'{sel_year+1}-01-01')].copy(deep=True)
 
         # Load categories
-        df_categories = pd.read_excel(GeneralSettings.project_path / 'data/categories.xlsx')
+        df_categories = read_sql_table_cats(to_records=False, fill_nan_end_year=True).astype(
+            {'begin_year': 'int', 'end_year': 'int'})
 
-        df_categories = df_categories[df_categories[sel_year] == 1].drop(columns=[2022, 2023])
+        df_categories = df_categories[(df_categories.begin_year <= sel_year) & (df_categories.end_year >= sel_year)].drop(
+            columns=['begin_year', 'end_year']).rename(columns={'grouplevel': 'group'})
+
+        df_categories.columns = df_categories.columns.str.upper()
 
         # Prepare data for analysis
         df_analysis = self.prepare_data(df)
@@ -218,6 +224,348 @@ class App(object):
             ], style={'height': '100%', 'display': 'flex', 'margin-bottom': '4px'})
         ])
 
+        modal = html.Div(
+            [
+                dbc.Button("Add category", id="open", n_clicks=0),
+                dbc.Modal(
+                    [
+                        dbc.ModalHeader(dbc.ModalTitle("Header")),
+                        dbc.ModalBody(
+                            html.Div([
+                                html.Div(['Group', dbc.Input(id='group')]),
+                                html.Div(['Category', dbc.Input(id='category')]),
+                                html.Div(['Start', dbc.Input(id='startyear')]),
+                                html.Div(['End', dbc.Input(id='endyear')])
+                            ])
+                        ),
+                        dbc.ModalFooter(
+                            html.Div([
+                                dbc.Button("Submit", id="submit-cat", n_clicks=0),
+                                dbc.Button("Close", id="close", className="ms-auto", n_clicks=0)
+                            ])
+                        ),
+                    ],
+                    id="modal",
+                    is_open=False,
+                ),
+            ]
+        )
+
+        modal_edit = html.Div(
+            [
+                dbc.Modal(
+                    [
+                        dbc.ModalHeader(dbc.ModalTitle("Header")),
+                        dbc.ModalBody(
+                            html.Div([
+                                html.Div(['Group', dbc.Input(id='group-edit')]),
+                                html.Div(['Category', dbc.Input(id='category-edit')]),
+                                html.Div(['Start', dbc.Input(id='startyear-edit')]),
+                                html.Div(['End', dbc.Input(id='endyear-edit')])
+                            ])
+                        ),
+                        dbc.ModalFooter(
+                            html.Div([
+                                dbc.Button("Submit", id="submit-cat-edit", n_clicks=0),
+                                dbc.Button("Close", id="close-edit", className="ms-auto", n_clicks=0)
+                            ])
+                        ),
+                    ],
+                    id="modal-edit",
+                    is_open=False,
+                ),
+            ]
+        )
+
+        modal_remove = html.Div(
+            [
+                dbc.Modal(
+                    [
+                        dbc.ModalBody(
+                            'Wil je deze categorie verwijderen?'
+                        ),
+                        dbc.ModalFooter(
+                            html.Div([
+                                dbc.Button("Yes", id="yes-remove", n_clicks=0),
+                                dbc.Button("No", id="no-remove", className="ms-auto", n_clicks=0)
+                            ])
+                        ),
+                    ],
+                    id="modal-remove",
+                    is_open=False,
+                ),
+            ]
+        )
+
+        df_cats = read_sql_table_cats()
+
+        cursor, conn = connect_to_database()
+
+        df_budget_sources = pd.read_sql("""SELECT * FROM budget""", conn)
+
+        cursor.close()
+        conn.close()
+
+        checklist_source_files = dcc.Checklist(
+            df_budget_sources.source_file.unique(),
+            id='checklist-remove-files'
+        )
+
+        modal_remove_file = html.Div(
+            [
+                dbc.Modal(
+                    [
+                        dbc.ModalBody(
+                            'Wil je de geselecteerde bestanden verwijderen?'
+                        ),
+                        dbc.ModalFooter(
+                            html.Div([
+                                dbc.Button("Yes", id="yes-remove-file", n_clicks=0),
+                                dbc.Button("No", id="no-remove-file", className="ms-auto", n_clicks=0)
+                            ])
+                        ),
+                    ],
+                    id="modal-remove-file",
+                    is_open=False,
+                ),
+            ]
+        )
+
+        modal_no_selection = html.Div(
+            [
+                dbc.Modal(
+                    [
+                        dbc.ModalBody(
+                            'Geen bestand geselecteerd.'
+                        ),
+                        dbc.ModalFooter(
+                            html.Div([
+                                dbc.Button("Close", id="no-selection-close", n_clicks=0),
+                            ])
+                        ),
+                    ],
+                    id="modal-no-selection",
+                    is_open=False,
+                ),
+            ]
+        )
+
+        page_settings_layout = html.Div([
+            navbar,
+            html.Div([
+                checklist_source_files,
+                dbc.Button("Remove files", id="remove-files", n_clicks=0),
+                dbc.Button('Add files', id='add-files', n_clicks=0),
+                modal_remove_file,
+                modal_no_selection
+                # modal_add_file
+            ]),
+            modal,
+            modal_edit,
+            modal_remove,
+            html.Div([
+
+                html.H3("Categories", style={'text-align': 'center'}),
+
+                dash_table.DataTable(
+                    id='table-category',
+                    columns=[{'name': 'GROUP', 'id': 'grouplevel'},
+                             {'name': 'CATEGORY', 'id': 'category'},
+                             {'name': 'START', 'id': 'begin_year'},
+                             {'name': 'END', 'id': 'end_year'},
+                             {'name': 'EDIT', 'id': 'edit'},
+                             {'name': 'REMOVE', 'id': 'remove'}],
+                    data=df_cats,
+                )])
+        ])
+
+        @app.callback(Output('modal-no-selection', 'is_open', allow_duplicate=True),
+                      Input('no-selection-close', 'n_clicks'),
+                      prevent_initial_call=True)
+        def close_no_selection(n_clicks):
+            if n_clicks:
+                return False
+
+        @app.callback(Output('modal-remove-file', 'is_open', allow_duplicate=True),
+                      Input('no-remove-file', 'n_clicks'),
+                      prevent_initial_call=True)
+        def close_no_selection(n_clicks):
+            if n_clicks:
+                return False
+
+        @app.callback(Output('modal-remove-file', 'is_open', allow_duplicate=True),
+                      Output('checklist-remove-files', 'options'),
+                      Output('checklist-remove-files', 'value'),
+                      Input('yes-remove-file', 'n_clicks'),
+                      Input('checklist-remove-files', 'value'),
+                      prevent_initial_call=True)
+        def close_no_selection(n_clicks, selection):
+            if n_clicks:
+
+                cursor, conn = connect_to_database()
+
+                for sel in selection:
+                    print(sel)
+                    cursor.execute("""DELETE FROM budget where source_file = ?""", (sel, ))
+
+                conn.commit()
+
+                df_budget_sources = pd.read_sql("""SELECT * FROM budget""", conn)
+
+                cursor.close()
+                conn.close()
+
+                return False, df_budget_sources.source_file.unique(), []
+
+        @app.callback(Output('modal-remove-file', 'is_open'),
+                      Output('modal-no-selection', 'is_open'),
+                      Input('remove-files', 'n_clicks'),
+                      State('checklist-remove-files', 'value'))
+        def open_modal_remove_files(n_clicks, val):
+            print(val)
+            if n_clicks and val:
+                return True, False
+
+            if n_clicks and not val:
+                return False, True
+
+        @app.callback(Output('modal-remove', 'is_open', allow_duplicate=True),
+                      Output('table-category', 'data', allow_duplicate=True),
+                      Input('yes-remove', 'n_clicks'),
+                      Input('no-remove', 'n_clicks'),
+                      State('table-category', 'active_cell'),
+                      State('table-category', 'data'),
+                      prevent_initial_call=True
+                      )
+        def toggle_remove_row(ny, nn, active_cell, data):
+            row = data[active_cell['row']]
+
+            if nn:
+                df_cats = read_sql_table_cats()
+                return False, df_cats
+            if ny:
+                cursor, conn = connect_to_database()
+
+                sql_remove = f"""DELETE FROM categories WHERE id=?;"""
+
+                cursor.execute(sql_remove, (f'{row['grouplevel']}_{row['category']}_{row['begin_year']}',))
+                conn.commit()
+
+                df_cats = read_sql_table_cats()
+
+                cursor.close()
+                conn.close()
+
+                return False, df_cats
+
+        @app.callback(Output('modal-edit', 'is_open'),
+                      Output('modal-remove', 'is_open'),
+                      Output('group-edit', 'value'),
+                      Output('category-edit', 'value'),
+                      Output('startyear-edit', 'value'),
+                      Output('endyear-edit', 'value'),
+                      Input('table-category', 'active_cell'),
+                      State('table-category', 'data')
+                      )
+        def open_modal_cell(active_cell, data):
+
+            if not active_cell:
+                return False, False, None, None, None, None
+
+            row = data[active_cell['row']]
+
+            if active_cell['column'] == 4:
+                return True, False, row['grouplevel'], row['category'], row['begin_year'], row['end_year']
+            elif active_cell['column'] == 5:
+                return False, True, None, None, None, None
+            else:
+                return False, False, None, None, None, None
+
+        @app.callback(Output('modal-edit', 'is_open', allow_duplicate=True),
+                      Output('table-category', 'data', allow_duplicate=True),
+                      Input('close-edit', 'n_clicks'),
+                      Input('submit-cat-edit', 'n_clicks'),
+                      State('group-edit', 'value'),
+                      State('category-edit', 'value'),
+                      State('startyear-edit', 'value'),
+                      State('endyear-edit', 'value'),
+                      State('table-category', 'active_cell'),
+                      State('table-category', 'data'),
+                      prevent_initial_call=True)
+        def handle_modal_edit(n1, n2, group, cat, sy, ey, active_cell, data):
+            if ctx.triggered_id == 'close-edit':
+                df_cats = read_sql_table_cats()
+                return False, df_cats
+            else:
+                row = data[active_cell['row']]
+                cursor, conn = connect_to_database()
+
+                sql_remove = f"""DELETE FROM categories WHERE id=?;"""
+
+                cursor.execute(sql_remove, (f'{row['grouplevel']}_{row['category']}_{row['begin_year']}',))
+                conn.commit()
+
+                params = (f'{group}_{cat}_{sy}', group, cat, sy, ey)
+
+                sql_row = f"""INSERT INTO categories VALUES (?, ?, ?, ?, ?);"""
+
+                cursor.execute(sql_row, params)
+                conn.commit()
+
+                df_cats = read_sql_table_cats()
+
+                cursor.close()
+                conn.close()
+
+                return False, df_cats
+
+        @app.callback(
+             Output("modal", "is_open"),
+             Output('table-category', 'data'),
+             Input("open", "n_clicks"),
+             Input("close", "n_clicks"),
+             Input('submit-cat', 'n_clicks'),
+             State("modal", "is_open"),
+             State('group', 'value'),
+             State('category', 'value'),
+             State('startyear', 'value'),
+             State('endyear', 'value'),
+        )
+        def toggle_modal(n1, n2, n3, is_open, group, cat, startyear, endyear):
+
+            df_cats = read_sql_table_cats()
+
+            if not ctx.triggered_id:
+                button_id = 'No clicks yet'
+            else:
+                button_id = ctx.triggered_id
+
+            if button_id == 'submit-cat':
+                print('Connect to database...')
+                cursor, conn = connect_to_database()
+
+                # todo: check input
+
+                params = (f'{group}_{cat}_{startyear}', group, cat, startyear, endyear)
+
+                sql_row = f"""INSERT INTO categories VALUES (?, ?, ?, ?, ?);"""
+
+                cursor.execute(sql_row, params)
+
+                conn.commit()
+
+                df_cats = read_sql_table_cats()
+
+                cursor.close()
+                conn.close()
+
+                return not is_open, df_cats
+
+            if button_id == 'open' or button_id == 'close':
+                return not is_open, df_cats
+
+            return is_open, df_cats
+
         @app.callback(Output('data-view', 'data'),
                       [Input('dropdown-view', 'value')])
         def create_table_output(view_value):
@@ -302,6 +650,8 @@ class App(object):
                 return page_2_layout
             elif pathname == '/budget':
                 return page_3_layout
+            elif pathname == '/settings':
+                return page_settings_layout
             else:
                 return page_1_layout
             # You could also return a 404 "URL not found" page here
@@ -327,6 +677,7 @@ class App(object):
 
         return df_analysis
 
+
     def prepare_data_budget(self, ref_date, sel_year):
 
         df = pd.read_excel(GeneralSettings.project_path / f'data/budget{sel_year}.xlsx')
@@ -337,4 +688,5 @@ class App(object):
 
         df['INCOME_IND'] = df['GROUP'].apply(lambda x: x if x == 'Inkomsten' else 'Uitgaven')
 
-        return df[df.DATE <= ref_date].copy(deep=True)
+        return df[(df.DATE >= pd.to_datetime(f'{sel_year}-01-01')) & (df.DATE <= ref_date)].copy(deep=True)
+
