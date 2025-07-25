@@ -7,7 +7,7 @@ import dash_bootstrap_components as dbc
 
 class GeneralSettings(object):
 
-    project_path = Path(r'C:\Users\robsc\Documents\Projecten\huishoudboekje')
+    project_path = Path(r'C:\Users\robsc\Documents\Analyse\Huishoudboekje')
 
     year_selected = 2025
 
@@ -45,7 +45,7 @@ class FigureSettings(object):
 
 
 class DatabaseSettings:
-    database_name = 'houdhoudboekje.db'
+    database_name = 'huishoudboekje.db'
 
     sql_statements = [
         """CREATE TABLE IF NOT EXISTS categories (

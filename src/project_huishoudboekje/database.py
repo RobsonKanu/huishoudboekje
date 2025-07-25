@@ -36,7 +36,7 @@ def read_sql_table_cats(to_records=True, fill_nan_end_year=False):
     conn.close()
 
     if fill_nan_end_year:
-        df['end_year'] = df['end_year'].str.replace('', '9999').fillna('9999')
+        df['end_year'] = df['end_year'].astype(str).replace('', '9999').fillna('9999')
 
     if to_records:
         return df.drop(columns=['id']).sort_values(by=['grouplevel', 'category', 'begin_year']).to_dict('records')
