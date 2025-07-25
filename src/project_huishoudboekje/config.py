@@ -7,7 +7,7 @@ import dash_bootstrap_components as dbc
 
 class GeneralSettings(object):
 
-    project_path = Path(r'C:\Users\robsc\Documents\Projecten\huishoudboekje')
+    project_path = Path(r'C:\Users\robsc\Documents\Analyse\Huishoudboekje')
 
     year_selected = 2025
 
