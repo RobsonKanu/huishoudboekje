@@ -8,6 +8,8 @@ from dash.dash_table import FormatTemplate
 import uuid
 import numpy as np
 import pandas as pd
+import base64
+import io
 
 from datetime import date
 
@@ -16,7 +18,9 @@ from project_huishoudboekje.graphs import \
     graph_group_month, graph_groups, graph_total, graph_total_delta, graph_groups_delta
 from project_huishoudboekje.page_layouts import get_nav_bar, get_page_1_graphs, get_page_1_selector, \
     get_page_1_table_actuals, get_page_1_table_budget, get_page_2_table, get_page_2_button
-from project_huishoudboekje.database import connect_to_database, read_sql_table_cats
+from project_huishoudboekje.database import (
+    connect_to_database, read_sql_table_cats, files_in_budget, delete_files_from_budget,
+    remove_category, add_budget_file_to_db, read_sql_table_budget)
 
 
 class App(object):
@@ -106,7 +110,8 @@ class App(object):
         @app.callback(Output('data-groups-budget', 'data'),
                       [Input('dropdown-groups', 'value')])
         def update_rows_budget(selected_value):
-            df_budget = pd.read_excel(GeneralSettings.project_path / f'data/budget{GeneralSettings.year_selected}.xlsx')
+            df_budget = read_sql_table_budget(year=GeneralSettings.year_selected)
+            # df_budget = pd.read_excel(GeneralSettings.project_path / f'data/budget{GeneralSettings.year_selected}.xlsx')
 
             df_sel = pd.pivot_table(df_budget[df_budget.GROUP == selected_value], values='BUDGET',
                                     index=['CATEGORY'], columns=['YEAR_MONTH'], aggfunc=np.sum).reset_index()
@@ -226,7 +231,10 @@ class App(object):
 
         modal = html.Div(
             [
-                dbc.Button("Add category", id="open", n_clicks=0),
+                dbc.Button("Add category", id="open", n_clicks=0,
+                           style={'background-color': px.colors.qualitative.Dark2[2],
+                                  'border-width': '0px',
+                                  'textAlign': 'left'}),
                 dbc.Modal(
                     [
                         dbc.ModalHeader(dbc.ModalTitle("Header")),
@@ -353,31 +361,85 @@ class App(object):
         page_settings_layout = html.Div([
             navbar,
             html.Div([
-                checklist_source_files,
-                dbc.Button("Remove files", id="remove-files", n_clicks=0),
-                dbc.Button('Add files', id='add-files', n_clicks=0),
-                modal_remove_file,
-                modal_no_selection
-                # modal_add_file
+                html.Div([
+                    html.Div(
+                        [html.I("Input files Budget",
+                                style={'width': '130px', 'height': '35px', 'padding-top': '7px',
+                                       'padding-left': '7px',
+                                       'textAlign': 'center', 'font-family': 'sans-serif',
+                                       'font-style': 'normal'})],
+                        style={'width': '29%', 'backgroundColor': px.colors.qualitative.Pastel2[2], 'padding': '5px',
+                               'margin-left': '20px', 'margin-right': '20px', 'textAlign': 'center'}),
+                    html.Div([
+                        dbc.Button("Remove files", id="remove-files", n_clicks=0),
+                        dcc.Upload(
+                            id='upload-data',
+                            children=html.Div([
+                                'Drag and Drop or ',
+                                html.A('Add Files')
+                            ]),
+                            multiple=True),
+                        ], style={'display': 'flex', 'justifyContent': 'space-around'}),
+                    checklist_source_files,
+                    modal_remove_file,
+                    modal_no_selection,
+                ], style={'width': '33%', 'padding': '10px', 'float': 'left'}),
             ]),
-            modal,
-            modal_edit,
-            modal_remove,
             html.Div([
+                modal,
+                modal_edit,
+                modal_remove,
+                html.Div([
 
-                html.H3("Categories", style={'text-align': 'center'}),
+                    html.H3("Categories", style={'text-align': 'center'}),
 
-                dash_table.DataTable(
-                    id='table-category',
-                    columns=[{'name': 'GROUP', 'id': 'grouplevel'},
-                             {'name': 'CATEGORY', 'id': 'category'},
-                             {'name': 'START', 'id': 'begin_year'},
-                             {'name': 'END', 'id': 'end_year'},
-                             {'name': 'EDIT', 'id': 'edit'},
-                             {'name': 'REMOVE', 'id': 'remove'}],
-                    data=df_cats,
-                )])
+                    dash_table.DataTable(
+                        id='table-category',
+                        columns=[{'name': 'GROUP', 'id': 'grouplevel'},
+                                 {'name': 'CATEGORY', 'id': 'category'},
+                                 {'name': 'START', 'id': 'begin_year'},
+                                 {'name': 'END', 'id': 'end_year'},
+                                 {'name': 'EDIT', 'id': 'edit'},
+                                 {'name': 'REMOVE', 'id': 'remove'}],
+                        data=df_cats
+                    )
+                ], style={'width': '66%', 'padding': '10px', 'float': 'left'})
+            ], style={'display': 'flex'})
         ])
+
+        def parse_contents(contents, filename):
+            content_type, content_string = contents.split(',')
+
+            decoded = base64.b64decode(content_string)
+            try:
+                if 'csv' in filename:
+                    # Assume that the user uploaded a CSV file
+                    df = pd.read_csv(
+                        io.StringIO(decoded.decode('utf-8')))
+                elif 'xlsx' in filename:
+                    # Assume that the user uploaded an excel file
+                    df = pd.read_excel(io.BytesIO(decoded))
+            except Exception as e:
+                print(e)
+                return html.Div([
+                    'There was an error processing this file.'
+                ])
+
+            # todo: open modal if file already exists 'message first remove file before importing again'
+            add_budget_file_to_db(df, filename)
+
+        @app.callback(Output('checklist-remove-files', 'options', allow_duplicate=True),
+                      Input('upload-data', 'contents'),
+                      State('upload-data', 'filename'),
+                      prevent_initial_call=True)
+        def update_output(list_of_contents, list_of_names):
+            if list_of_contents is not None:
+                for c, n in zip(list_of_contents, list_of_names):
+                    parse_contents(c, n)
+
+                lst_source_files = files_in_budget()
+
+                return lst_source_files
 
         @app.callback(Output('modal-no-selection', 'is_open', allow_duplicate=True),
                       Input('no-selection-close', 'n_clicks'),
@@ -394,40 +456,29 @@ class App(object):
                 return False
 
         @app.callback(Output('modal-remove-file', 'is_open', allow_duplicate=True),
-                      Output('checklist-remove-files', 'options'),
+                      Output('checklist-remove-files', 'options', allow_duplicate=True),
                       Output('checklist-remove-files', 'value'),
                       Input('yes-remove-file', 'n_clicks'),
-                      Input('checklist-remove-files', 'value'),
+                      State('checklist-remove-files', 'value'),
                       prevent_initial_call=True)
         def close_no_selection(n_clicks, selection):
-            if n_clicks:
+            if ctx.triggered[0]['prop_id'].split('.')[0] == 'yes-remove-file':
+                src_files = delete_files_from_budget(selection)
 
-                cursor, conn = connect_to_database()
-
-                for sel in selection:
-                    print(sel)
-                    cursor.execute("""DELETE FROM budget where source_file = ?""", (sel, ))
-
-                conn.commit()
-
-                df_budget_sources = pd.read_sql("""SELECT * FROM budget""", conn)
-
-                cursor.close()
-                conn.close()
-
-                return False, df_budget_sources.source_file.unique(), []
+                return False, src_files, []
 
         @app.callback(Output('modal-remove-file', 'is_open'),
                       Output('modal-no-selection', 'is_open'),
                       Input('remove-files', 'n_clicks'),
                       State('checklist-remove-files', 'value'))
         def open_modal_remove_files(n_clicks, val):
-            print(val)
             if n_clicks and val:
                 return True, False
 
             if n_clicks and not val:
                 return False, True
+
+            return False, False
 
         @app.callback(Output('modal-remove', 'is_open', allow_duplicate=True),
                       Output('table-category', 'data', allow_duplicate=True),
@@ -444,12 +495,7 @@ class App(object):
                 df_cats = read_sql_table_cats()
                 return False, df_cats
             if ny:
-                cursor, conn = connect_to_database()
-
-                sql_remove = f"""DELETE FROM categories WHERE id=?;"""
-
-                cursor.execute(sql_remove, (f'{row['grouplevel']}_{row['category']}_{row['begin_year']}',))
-                conn.commit()
+                remove_category(row)
 
                 df_cats = read_sql_table_cats()
 
@@ -680,8 +726,8 @@ class App(object):
 
     def prepare_data_budget(self, ref_date, sel_year):
 
-        df = pd.read_excel(GeneralSettings.project_path / f'data/budget{sel_year}.xlsx')
-
+        # df = pd.read_excel(GeneralSettings.project_path / f'data/budget{sel_year}.xlsx')
+        df = read_sql_table_budget(year=GeneralSettings.year_selected)
         df['DATE'] = pd.to_datetime(df['YEAR_MONTH'], format='%Y-%m')
 
         df['AMOUNT_NW'] = df.apply(lambda x: x['BUDGET'] if x['GROUP'] == 'Inkomsten' else x['BUDGET'], axis=1)
