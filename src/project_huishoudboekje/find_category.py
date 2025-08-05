@@ -4,7 +4,7 @@ import difflib
 import pandas as pd
 
 from project_huishoudboekje.config import GeneralSettings
-from project_huishoudboekje.utils import check_previous_month, find_most_likely_category
+from project_huishoudboekje.prep_utils import check_previous_month, find_most_likely_category
 
 
 class FindCategory(object):

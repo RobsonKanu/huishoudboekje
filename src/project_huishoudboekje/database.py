@@ -19,8 +19,6 @@ def connect_to_database():
             # commit the changes
             conn.commit()
 
-            print("Tables created successfully.")
-
             return cursor, conn
 
     except sqlite3.OperationalError as e:
