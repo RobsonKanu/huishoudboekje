@@ -98,6 +98,18 @@ def remove_category(row):
     conn.close()
 
 
+def add_category(params):
+    cursor, conn = connect_to_database()
+
+    sql_add = f"""INSERT INTO categories VALUES (?, ?, ?, ?, ?);"""
+
+    cursor.execute(sql_add, params)
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+
 def add_budget_file_to_db(df, filename):
     cursor, conn = connect_to_database()
 

@@ -10,7 +10,7 @@ from dash.dependencies import Input, Output, State
 from project_huishoudboekje.config import AppSettings
 from project_huishoudboekje.database import (
     connect_to_database, read_sql_table_cats, files_in_budget, delete_files_from_budget,
-    remove_category)
+    remove_category, add_category)
 from project_huishoudboekje.utils.prep_data import (prepare_data, prepare_data_budget, parse_contents_file_import,
                                                     group_data_for_table)
 from project_huishoudboekje.components.navbar import navbar
@@ -68,7 +68,7 @@ app.layout = html.Div([
 @app.callback(Output('data-groups', 'data'),
               Output('data-groups-budget', 'data'),
               Input('dropdown-groups', 'value'))
-def update_rows(selected_value):
+def get_tables_for_selected_group(selected_value):
     global df_analysis, df_budget, month_names
 
     df_pivot_actuals = group_data_for_table(df_analysis, selected_value, 'AMOUNT_NW', month_names)
@@ -77,11 +77,12 @@ def update_rows(selected_value):
     return df_pivot_actuals, df_pivot_budget
 
 
+# Settings: import budget files
 @app.callback(Output('checklist-remove-files', 'options', allow_duplicate=True),
               Input('upload-data', 'contents'),
               State('upload-data', 'filename'),
               prevent_initial_call=True)
-def update_output(list_of_contents, list_of_names):
+def import_file_and_update_database(list_of_contents, list_of_names):
     if list_of_contents is not None:
         for contents, filename in zip(list_of_contents, list_of_names):
             parse_contents_file_import(contents, filename)
@@ -91,7 +92,7 @@ def update_output(list_of_contents, list_of_names):
         return lst_source_files
 
 
-# Modal settings: close modal that no file is selected
+# Settings: close modal that no file is selected
 @app.callback(Output('modal-no-selection', 'is_open', allow_duplicate=True),
               Input('no-selection-close', 'n_clicks'),
               prevent_initial_call=True)
@@ -100,7 +101,8 @@ def close_no_selection(n_clicks):
         return False
 
 
-# Modal settings: no file selected to remove
+# todo: check of deze callback echt nodig is i.c.m. vorige
+# Settings: no file selected to remove
 @app.callback(Output('modal-remove-file', 'is_open', allow_duplicate=True),
               Input('no-remove-file', 'n_clicks'),
               prevent_initial_call=True)
@@ -108,18 +110,22 @@ def close_no_selection(n_clicks):
     if n_clicks:
         return False
 
+
+# Settings: delete file(s) from budget and update database
 @app.callback(Output('modal-remove-file', 'is_open', allow_duplicate=True),
               Output('checklist-remove-files', 'options', allow_duplicate=True),
               Output('checklist-remove-files', 'value'),
               Input('yes-remove-file', 'n_clicks'),
               State('checklist-remove-files', 'value'),
               prevent_initial_call=True)
-def close_no_selection(n_clicks, selection):
+def delete_files_from_budget(n_clicks, selection):
     if ctx.triggered[0]['prop_id'].split('.')[0] == 'yes-remove-file':
         src_files = delete_files_from_budget(selection)
 
         return False, src_files, []
 
+
+# Settings: open modal to confirm if files need to be removed
 @app.callback(Output('modal-remove-file', 'is_open'),
               Output('modal-no-selection', 'is_open'),
               Input('remove-files', 'n_clicks'),
@@ -133,6 +139,8 @@ def open_modal_remove_files(n_clicks, val):
 
     return False, False
 
+
+# Settings: modal to remove category from table
 @app.callback(Output('modal-remove', 'is_open', allow_duplicate=True),
               Output('table-category', 'data', allow_duplicate=True),
               Input('yes-remove', 'n_clicks'),
@@ -141,7 +149,7 @@ def open_modal_remove_files(n_clicks, val):
               State('table-category', 'data'),
               prevent_initial_call=True
               )
-def toggle_remove_row(ny, nn, active_cell, data):
+def remove_or_keep_category(ny, nn, active_cell, data):
     row = data[active_cell['row']]
 
     if nn:
@@ -154,6 +162,8 @@ def toggle_remove_row(ny, nn, active_cell, data):
 
         return False, df_cats
 
+
+# Settings: open modal to change category
 @app.callback(Output('modal-edit', 'is_open'),
               Output('modal-remove', 'is_open'),
               Output('group-edit', 'value'),
@@ -163,7 +173,7 @@ def toggle_remove_row(ny, nn, active_cell, data):
               Input('table-category', 'active_cell'),
               State('table-category', 'data')
               )
-def open_modal_cell(active_cell, data):
+def open_modal_edit_category(active_cell, data):
 
     if not active_cell:
         return False, False, None, None, None, None
@@ -177,6 +187,8 @@ def open_modal_cell(active_cell, data):
     else:
         return False, False, None, None, None, None
 
+
+# Settings: submit changes from edit modal
 @app.callback(Output('modal-edit', 'is_open', allow_duplicate=True),
               Output('table-category', 'data', allow_duplicate=True),
               Input('close-edit', 'n_clicks'),
@@ -188,33 +200,25 @@ def open_modal_cell(active_cell, data):
               State('table-category', 'active_cell'),
               State('table-category', 'data'),
               prevent_initial_call=True)
-def handle_modal_edit(n1, n2, group, cat, sy, ey, active_cell, data):
+def submit_changes_edit(n1, n2, group, cat, sy, ey, active_cell, data):
     if ctx.triggered_id == 'close-edit':
         df_cats = read_sql_table_cats()
         return False, df_cats
     else:
         row = data[active_cell['row']]
-        cursor, conn = connect_to_database()
 
-        sql_remove = f"""DELETE FROM categories WHERE id=?;"""
+        # remove current category
+        remove_category(row)
 
-        cursor.execute(sql_remove, (f'{row['grouplevel']}_{row['category']}_{row['begin_year']}',))
-        conn.commit()
-
-        params = (f'{group}_{cat}_{sy}', group, cat, sy, ey)
-
-        sql_row = f"""INSERT INTO categories VALUES (?, ?, ?, ?, ?);"""
-
-        cursor.execute(sql_row, params)
-        conn.commit()
+        # insert changed category
+        add_category((f'{group}_{cat}_{sy}', group, cat, sy, ey))
 
         df_cats = read_sql_table_cats()
 
-        cursor.close()
-        conn.close()
-
         return False, df_cats
 
+
+# Settings: add new category to database
 @app.callback(
      Output("modal", "is_open"),
      Output('table-category', 'data'),
@@ -227,7 +231,7 @@ def handle_modal_edit(n1, n2, group, cat, sy, ey, active_cell, data):
      State('startyear', 'value'),
      State('endyear', 'value'),
 )
-def toggle_modal(n1, n2, n3, is_open, group, cat, startyear, endyear):
+def add_new_category(n1, n2, n3, is_open, group, cat, startyear, endyear):
 
     df_cats = read_sql_table_cats()
 
@@ -237,23 +241,12 @@ def toggle_modal(n1, n2, n3, is_open, group, cat, startyear, endyear):
         button_id = ctx.triggered_id
 
     if button_id == 'submit-cat':
-        print('Connect to database...')
-        cursor, conn = connect_to_database()
-
         # todo: check input
 
         params = (f'{group}_{cat}_{startyear}', group, cat, startyear, endyear)
-
-        sql_row = f"""INSERT INTO categories VALUES (?, ?, ?, ?, ?);"""
-
-        cursor.execute(sql_row, params)
-
-        conn.commit()
+        add_category(params)
 
         df_cats = read_sql_table_cats()
-
-        cursor.close()
-        conn.close()
 
         return not is_open, df_cats
 
@@ -262,6 +255,8 @@ def toggle_modal(n1, n2, n3, is_open, group, cat, startyear, endyear):
 
     return is_open, df_cats
 
+
+# Settings:
 @app.callback(Output('data-view', 'data'),
               [Input('dropdown-view', 'value')])
 def create_table_output(view_value):
@@ -271,7 +266,8 @@ def create_table_output(view_value):
 
     df = df[df.GROUP != 'Inkomsten']
 
-    df_budget = pd.read_excel(GeneralSettings.project_path / f'data/budget{GeneralSettings.year_selected}.xlsx')
+    df_budget = read_sql_table_budget(year=GeneralSettings.year_selected)
+    # df_budget = pd.read_excel(GeneralSettings.project_path / f'data/budget{GeneralSettings.year_selected}.xlsx')
     df_budget['DATE'] = pd.to_datetime(df_budget['YEAR_MONTH'], format='%Y-%m')
     df_budget = df_budget[df_budget.GROUP != 'Inkomsten']
 
