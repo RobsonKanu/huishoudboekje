@@ -11,6 +11,8 @@ class GeneralSettings(object):
 
     year_selected = 2025
 
+    test_par = '_test'
+
 
 class AppSettings(object):
 

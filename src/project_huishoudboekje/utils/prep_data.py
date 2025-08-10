@@ -26,17 +26,23 @@ def prepare_data(df):
     return df_analysis
 
 
-def prepare_data_budget(ref_date, sel_year, exclude_income=False, ytd_view=True):
+def prepare_data_budget(ref_date, sel_year, exclude_income=False, rename_budget=True):
 
-    # df = pd.read_excel(GeneralSettings.project_path / f'data/budget{sel_year}.xlsx')
-    df = read_sql_table_budget(year=GeneralSettings.year_selected)
+    df = read_sql_table_budget(year=sel_year)
     df['DATE'] = pd.to_datetime(df['YEAR_MONTH'], format='%Y-%m')
 
-    df['AMOUNT_NW'] = df.apply(lambda x: x['BUDGET'] if x['GROUP'] == 'Inkomsten' else x['BUDGET'], axis=1)
+    if rename_budget:
+        df['AMOUNT_NW'] = df.apply(lambda x: x['BUDGET'] if x['GROUP'] == 'Inkomsten' else x['BUDGET'], axis=1)
+
+    if exclude_income:
+        df = df[df.GROUP != 'Inkomsten'].copy()
 
     df['INCOME_IND'] = df['GROUP'].apply(lambda x: x if x == 'Inkomsten' else 'Uitgaven')
 
-    return df[df.DATE <= ref_date]
+    if ref_date:
+        return df[df.DATE <= ref_date]
+    else:
+        return df
 
 
 def parse_contents_file_import(contents, filename):

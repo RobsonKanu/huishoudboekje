@@ -19,23 +19,23 @@ from project_huishoudboekje.pages.page_budget_actuals import layout as layout_bu
 from project_huishoudboekje.pages.page_data import layout as layout_data
 from project_huishoudboekje.pages.page_settings import layout as layout_settings
 
-from project_huishoudboekje.config import GeneralSettings
+from project_huishoudboekje.config import GeneralSettings as GenSet
 from project_huishoudboekje.read_rabo import ReadRabo
 from project_huishoudboekje.read_asn import ReadAsn
 from project_huishoudboekje.find_category import FindCategory
 from project_huishoudboekje.store_results import StoreResults
 
 # List of months for table use
-month_names = [f'{GeneralSettings.year_selected}-0' + str(i) for i in list(range(1, 10))] + [
-    f'{GeneralSettings.year_selected}-' + str(i) for i in list(range(10, 13))]
+month_names = [f'{GenSet.year_selected}-0' + str(i) for i in list(range(1, 10))] + [
+    f'{GenSet.year_selected}-' + str(i) for i in list(range(10, 13))]
 
 # Load data transactions
-df_data = pd.read_excel(GeneralSettings.project_path / 'data/processed/transactions.xlsx').sort_values(
+df_data = pd.read_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx').sort_values(
     by='DATE', ascending=False)
 
 # Filter data for selected year
-df_data = df_data[(df_data['DATE'] >= f'{GeneralSettings.year_selected}-01-01') & (
-        df_data['DATE'] < f'{GeneralSettings.year_selected + 1}-01-01')].copy(deep=True)
+df_data = df_data[(df_data['DATE'] >= f'{GenSet.year_selected}-01-01') & (
+        df_data['DATE'] < f'{GenSet.year_selected + 1}-01-01')].copy(deep=True)
 
 # Prepare data for analysis
 df_analysis = prepare_data(df_data)
@@ -47,13 +47,13 @@ df_data.DATE = pd.DatetimeIndex(df_data.DATE).strftime("%Y-%m-%d")
 df_categories = read_sql_table_cats(to_records=False, fill_nan_end_year=True).astype(
     {'begin_year': 'int', 'end_year': 'int'})
 
-df_categories = df_categories[(df_categories.begin_year <= GeneralSettings.year_selected) & (
-        df_categories.end_year >= GeneralSettings.year_selected)].drop(
+df_categories = df_categories[(df_categories.begin_year <= GenSet.year_selected) & (
+        df_categories.end_year >= GenSet.year_selected)].drop(
     columns=['begin_year', 'end_year']).rename(columns={'grouplevel': 'group'})
 
 df_categories.columns = df_categories.columns.str.upper()
 
-df_budget = prepare_data_budget(df_analysis['DATE'].max(), GeneralSettings.year_selected)
+df_budget = prepare_data_budget(df_analysis['DATE'].max(), GenSet.year_selected)
 
 # Initialize app
 app = Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=AppSettings().style_sheet)
@@ -256,33 +256,37 @@ def add_new_category(n1, n2, n3, is_open, group, cat, startyear, endyear):
     return is_open, df_cats
 
 
-# Settings:
+# Budget vs Actuals: table with sum per category for actuals and budget
 @app.callback(Output('data-view', 'data'),
               [Input('dropdown-view', 'value')])
 def create_table_output(view_value):
 
-    df = pd.read_excel(GeneralSettings.project_path / 'data/processed/transactions.xlsx').sort_values(
+    df_raw = pd.read_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx').sort_values(
         by='DATE', ascending=False)
 
-    df = df[df.GROUP != 'Inkomsten']
+    df_raw = df_raw[df_raw.GROUP != 'Inkomsten']
 
-    df_budget = read_sql_table_budget(year=GeneralSettings.year_selected)
-    # df_budget = pd.read_excel(GeneralSettings.project_path / f'data/budget{GeneralSettings.year_selected}.xlsx')
-    df_budget['DATE'] = pd.to_datetime(df_budget['YEAR_MONTH'], format='%Y-%m')
-    df_budget = df_budget[df_budget.GROUP != 'Inkomsten']
-
-    df_analysis = prepare_data(df)
+    df_act = prepare_data(df_raw)
 
     if view_value == 'YTD':
         ref_date = date.today().replace(day=1)
 
-        df_analysis = df_analysis[df_analysis['DATE'] < ref_date.strftime('%Y-%m-%d')]
-        df_budget = df_budget[df_budget['DATE'] < ref_date.strftime('%Y-%m-%d')]
+        df_bud = prepare_data_budget(ref_date=ref_date,
+                                     sel_year=GenSet.year_selected,
+                                     exclude_income=True,
+                                     rename_budget=False)
 
-    df_analysis_tot = df_analysis.groupby('CATEGORY')['AMOUNT_NW'].sum()
-    df_budget_tot = df_budget.groupby('CATEGORY')['BUDGET'].sum()
+        df_act = df_analysis[df_analysis['DATE'] < ref_date.strftime('%Y-%m-%d')]
+    else:
+        df_bud = prepare_data_budget(ref_date=None,
+                                     sel_year=GenSet.year_selected,
+                                     exclude_income=True,
+                                     rename_budget=False)
 
-    df_tot = pd.concat([df_budget_tot, df_analysis_tot], axis=1).fillna(0).sort_values(
+    df_act_tot = df_act.groupby('CATEGORY')['AMOUNT_NW'].sum()
+    df_bud_tot = df_bud.groupby('CATEGORY')['BUDGET'].sum()
+
+    df_tot = pd.concat([df_bud_tot, df_act_tot], axis=1).fillna(0).sort_values(
         by='AMOUNT_NW', ascending=False)
 
     df_tot.loc['Total'] = df_tot.sum()
@@ -292,6 +296,8 @@ def create_table_output(view_value):
 
     return df_tot.reset_index().round(2).to_dict('records')
 
+
+# Data: add row to table
 @app.callback(
     Output('page-2-content', 'data'),
     Output('editing-rows-button', 'n_clicks'),
@@ -314,6 +320,8 @@ def add_row(n_clicks, rows, columns, active_cell, page_num):
 
     return rows, n_clicks
 
+
+# Data: show duplicate transactions
 @app.callback(
     Output('modal-duplicate-trans', 'is_open', allow_duplicate=True),
     Output('data-duplicates', 'data'),
@@ -330,6 +338,8 @@ def show_duplicates(n_clicks, table):
     else:
         return False, None
 
+
+# Data: close modal of duplicate transactions
 @app.callback(
     Output('modal-duplicate-trans', 'is_open', allow_duplicate=True),
     Input('close-modal-duplicate-trans', 'n_clicks'),
@@ -346,8 +356,10 @@ def close_modal_duplicate_trans(n_clicks):
     Output("output-1", "children"),
     Input("save-button", "n_clicks"),
     State("page-2-content", "data"))
-def selected_data_to_csv(nclicks, table1):
+def export_data_to_excel(nclicks, table1):
     if nclicks > 0:
+        global df_categories
+
         df_out = pd.DataFrame(table1)
         df_out['DATE'] = pd.to_datetime(df_out['DATE'], format='%Y-%m-%d')
         df_out['TRANS_ID'] = df_out['TRANS_ID'].apply(lambda x: uuid.uuid4() if x == '' else x)
@@ -356,7 +368,7 @@ def selected_data_to_csv(nclicks, table1):
         df_out = df_out.drop('GROUP', axis=1).merge(
             df_categories, how='left', left_on='CATEGORY', right_on='CATEGORY')
 
-        df_out.to_excel(GeneralSettings.project_path / 'data/processed/transactions.xlsx', index=False)
+        df_out.to_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx', index=False)
         return "Data Submitted"
 
 
@@ -378,8 +390,8 @@ def display_page(pathname):
 
 
 def run():
-    filenames_rabobank = next(os.walk(GeneralSettings.project_path / f'data/Rabobank'), (None, None, []))[2]
-    filenames_asn_bank = next(os.walk(GeneralSettings.project_path / f'data/ASN Bank'), (None, None, []))[2]
+    filenames_rabobank = next(os.walk(GenSet.project_path / f'data/Rabobank'), (None, None, []))[2]
+    filenames_asn_bank = next(os.walk(GenSet.project_path / f'data/ASN Bank'), (None, None, []))[2]
 
     if filenames_rabobank:
         df_rabo = ReadRabo().run(filenames_rabobank)
