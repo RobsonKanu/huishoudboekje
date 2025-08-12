@@ -40,7 +40,7 @@ def prepare_data_budget(ref_date, sel_year, exclude_income=False, rename_budget=
     df['INCOME_IND'] = df['GROUP'].apply(lambda x: x if x == 'Inkomsten' else 'Uitgaven')
 
     if ref_date:
-        return df[df.DATE <= ref_date]
+        return df[df.DATE <= pd.to_datetime(ref_date)]
     else:
         return df
 

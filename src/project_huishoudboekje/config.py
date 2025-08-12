@@ -64,5 +64,33 @@ class DatabaseSettings:
                 year_month text NOT NULL,
                 amount real NOT NULL,
                 source_file text NOT NULL
-        )"""
+        )""",
+        """CREATE TABLE IF NOT EXISTS transactions (
+                TRANS_ID text,
+                DATE text,
+                SOURCE text,
+                TRANSACTION_TYPE text,
+                FINANCIAL_TYPE text,
+                PARTY text,
+                AMOUNT real,
+                GROUPLEVEL text,
+                CATEGORY text,
+                ANALYSE_IND int,
+                TS_CHANGED real
+        )
+        """,
+        """CREATE TABLE IF NOT EXISTS transactions_test (
+                        TRANS_ID text,
+                        DATE text,
+                        SOURCE text,
+                        TRANSACTION_TYPE text,
+                        FINANCIAL_TYPE text,
+                        PARTY text,
+                        AMOUNT real,
+                        GROUPLEVEL text,
+                        CATEGORY text,
+                        ANALYSE_IND int,
+                        TS_CHANGED real
+        )
+        """
     ]

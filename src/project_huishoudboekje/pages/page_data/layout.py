@@ -4,7 +4,6 @@ import dash_bootstrap_components as dbc
 
 from dash import html, dash_table
 
-# from project_huishoudboekje.components.navbar import navbar
 from project_huishoudboekje.pages.page_data.page_components import button_style, create_dash_table_data
 
 

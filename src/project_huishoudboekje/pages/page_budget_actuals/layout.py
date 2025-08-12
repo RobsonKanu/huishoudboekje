@@ -4,11 +4,9 @@ import plotly.express as px
 from dash import html, dcc, dash_table
 from dash.dash_table import FormatTemplate
 
-# from project_huishoudboekje.components.navbar import navbar
 from project_huishoudboekje.utils.graphs import (
     graph_total, graph_groups, graph_total_delta, graph_groups_delta
 )
-# from project_huishoudboekje.app import df_analysis, df_budget
 from project_huishoudboekje.config import TableSettings
 
 

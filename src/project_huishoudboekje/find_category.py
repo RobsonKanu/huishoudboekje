@@ -5,7 +5,7 @@ import pandas as pd
 
 from project_huishoudboekje.config import GeneralSettings as GenSet
 from project_huishoudboekje.prep_utils import check_previous_month, find_most_likely_category
-from project_huishoudboekje.database import read_sql_table_cats
+from project_huishoudboekje.database import read_sql_table_cats, read_sql_table_transactions
 
 
 class FindCategory(object):
@@ -38,7 +38,8 @@ class FindCategory(object):
 
     def assign_category(self, df):
 
-        df_proc = pd.read_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx')
+        df_proc = read_sql_table_transactions(test_par=GenSet.test_par)
+        # df_proc = pd.read_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx')
 
         for idx in df.index:
 

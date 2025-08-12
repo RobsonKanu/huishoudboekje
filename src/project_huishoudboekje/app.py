@@ -9,8 +9,8 @@ from dash.dependencies import Input, Output, State
 
 from project_huishoudboekje.config import AppSettings
 from project_huishoudboekje.database import (
-    connect_to_database, read_sql_table_cats, files_in_budget, delete_files_from_budget,
-    remove_category, add_category)
+    read_sql_table_cats, files_in_budget, delete_files_from_budget,
+    remove_category, add_category, add_transactions_to_db, read_sql_table_transactions)
 from project_huishoudboekje.utils.prep_data import (prepare_data, prepare_data_budget, parse_contents_file_import,
                                                     group_data_for_table)
 from project_huishoudboekje.components.navbar import navbar
@@ -23,19 +23,15 @@ from project_huishoudboekje.config import GeneralSettings as GenSet
 from project_huishoudboekje.read_rabo import ReadRabo
 from project_huishoudboekje.read_asn import ReadAsn
 from project_huishoudboekje.find_category import FindCategory
-from project_huishoudboekje.store_results import StoreResults
+# from project_huishoudboekje.store_results import StoreResults
 
 # List of months for table use
 month_names = [f'{GenSet.year_selected}-0' + str(i) for i in list(range(1, 10))] + [
     f'{GenSet.year_selected}-' + str(i) for i in list(range(10, 13))]
 
 # Load data transactions
-df_data = pd.read_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx').sort_values(
+df_data = read_sql_table_transactions(year=GenSet.year_selected, test_par=GenSet.test_par).sort_values(
     by='DATE', ascending=False)
-
-# Filter data for selected year
-df_data = df_data[(df_data['DATE'] >= f'{GenSet.year_selected}-01-01') & (
-        df_data['DATE'] < f'{GenSet.year_selected + 1}-01-01')].copy(deep=True)
 
 # Prepare data for analysis
 df_analysis = prepare_data(df_data)
@@ -153,12 +149,12 @@ def remove_or_keep_category(ny, nn, active_cell, data):
     row = data[active_cell['row']]
 
     if nn:
-        df_cats = read_sql_table_cats()
+        df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
         return False, df_cats
     if ny:
         remove_category(row)
 
-        df_cats = read_sql_table_cats()
+        df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
 
         return False, df_cats
 
@@ -213,7 +209,7 @@ def submit_changes_edit(n1, n2, group, cat, sy, ey, active_cell, data):
         # insert changed category
         add_category((f'{group}_{cat}_{sy}', group, cat, sy, ey))
 
-        df_cats = read_sql_table_cats()
+        df_cats = read_sql_table_cats(add_edit_emoji=True, add_remove_emoji=True)
 
         return False, df_cats
 
@@ -233,7 +229,7 @@ def submit_changes_edit(n1, n2, group, cat, sy, ey, active_cell, data):
 )
 def add_new_category(n1, n2, n3, is_open, group, cat, startyear, endyear):
 
-    df_cats = read_sql_table_cats()
+    df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
 
     if not ctx.triggered_id:
         button_id = 'No clicks yet'
@@ -246,7 +242,7 @@ def add_new_category(n1, n2, n3, is_open, group, cat, startyear, endyear):
         params = (f'{group}_{cat}_{startyear}', group, cat, startyear, endyear)
         add_category(params)
 
-        df_cats = read_sql_table_cats()
+        df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
 
         return not is_open, df_cats
 
@@ -261,10 +257,10 @@ def add_new_category(n1, n2, n3, is_open, group, cat, startyear, endyear):
               [Input('dropdown-view', 'value')])
 def create_table_output(view_value):
 
-    df_raw = pd.read_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx').sort_values(
+    df_raw = read_sql_table_transactions(year=GenSet.year_selected, test_par=GenSet.test_par).sort_values(
         by='DATE', ascending=False)
 
-    df_raw = df_raw[df_raw.GROUP != 'Inkomsten']
+    df_raw = df_raw[df_raw.GROUP != 'Inkomsten'].copy()
 
     df_act = prepare_data(df_raw)
 
@@ -276,7 +272,7 @@ def create_table_output(view_value):
                                      exclude_income=True,
                                      rename_budget=False)
 
-        df_act = df_analysis[df_analysis['DATE'] < ref_date.strftime('%Y-%m-%d')]
+        df_act = df_act[df_act['DATE'] < ref_date.strftime('%Y-%m-%d')]
     else:
         df_bud = prepare_data_budget(ref_date=None,
                                      sel_year=GenSet.year_selected,
@@ -362,13 +358,15 @@ def export_data_to_excel(nclicks, table1):
 
         df_out = pd.DataFrame(table1)
         df_out['DATE'] = pd.to_datetime(df_out['DATE'], format='%Y-%m-%d')
-        df_out['TRANS_ID'] = df_out['TRANS_ID'].apply(lambda x: uuid.uuid4() if x == '' else x)
+        df_out['TRANS_ID'] = df_out['TRANS_ID'].apply(lambda x: uuid.uuid4() if ((x == '') or (x is None)) else x)
         df_out['TRANSACTION_TYPE'] = df_out['TRANSACTION_TYPE'].apply(lambda x: '-' if x == '' else x)
 
         df_out = df_out.drop('GROUP', axis=1).merge(
             df_categories, how='left', left_on='CATEGORY', right_on='CATEGORY')
 
-        df_out.to_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx', index=False)
+        add_transactions_to_db(df_out, test_par=GenSet.test_par)
+
+        # df_out.to_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx', index=False)
         return "Data Submitted"
 
 
@@ -396,12 +394,14 @@ def run():
     if filenames_rabobank:
         df_rabo = ReadRabo().run(filenames_rabobank)
         df_rabo = FindCategory().run(df_rabo, 'Rabobank')
-        StoreResults().run(df_rabo)
+        add_transactions_to_db(df_rabo, test_par=GenSet.test_par)
+        # StoreResults().run(df_rabo)
 
     if filenames_asn_bank:
         df_asn = ReadAsn().run(filenames_asn_bank)
         df_asn = FindCategory().run(df_asn, 'ASN Bank')
-        StoreResults().run(df_asn)
+        add_transactions_to_db(df_asn, test_par=GenSet.test_par)
+        # StoreResults().run(df_asn)
 
     app.run_server(debug=True)
 

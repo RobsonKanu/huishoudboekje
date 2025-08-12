@@ -2,6 +2,8 @@
 import sqlite3
 import pandas as pd
 
+from datetime import datetime
+
 from project_huishoudboekje.config import DatabaseSettings, GeneralSettings
 
 
@@ -25,13 +27,19 @@ def connect_to_database():
         print("Failed to open database:", e)
 
 
-def read_sql_table_cats(to_records=True, fill_nan_end_year=False):
+def read_sql_table_cats(to_records=True, fill_nan_end_year=False, add_edit_emoji=False, add_remove_emoji=False):
     cursor, conn = connect_to_database()
 
     df = pd.read_sql("""SELECT * FROM categories""", conn)
 
     cursor.close()
     conn.close()
+
+    if add_edit_emoji:
+        df['edit'] = '✏️'
+
+    if add_remove_emoji:
+        df['remove'] = '❌'
 
     if fill_nan_end_year:
         df['end_year'] = df['end_year'].astype(str).replace('', '9999').replace('None', '9999').astype('int')
@@ -42,7 +50,7 @@ def read_sql_table_cats(to_records=True, fill_nan_end_year=False):
         return df.drop(columns=['id']).sort_values(by=['grouplevel', 'category', 'begin_year'])
 
 
-def read_sql_table_budget(year=None):
+def read_sql_table_budget(year=None, keep_src=False):
 
     cursor, conn = connect_to_database()
 
@@ -54,7 +62,9 @@ def read_sql_table_budget(year=None):
     cursor.close()
     conn.close()
 
-    return df.drop(columns=['id', 'source_file']).rename(columns={
+    cols_exclude = ['id'] if keep_src else ['id', 'source_file']
+
+    return df.drop(columns=cols_exclude).rename(columns={
         'grouplevel': 'GROUP', 'category': 'CATEGORY', 'year_month': 'YEAR_MONTH', 'amount': 'BUDGET'})
 
 
@@ -128,3 +138,41 @@ def add_budget_file_to_db(df, filename):
     conn.commit()
     cursor.close()
     conn.close()
+
+
+def add_transactions_to_db(df, test_par=""):
+
+    cursor, conn = connect_to_database()
+
+    df['TS_CHANGED'] = datetime.now().timestamp()
+
+    df.rename(columns={'GROUP': 'GROUPLEVEL'}).astype({'TRANS_ID': 'str'}).to_sql(name=f'transactions{test_par}',
+                                                                                  con=conn,
+                                                                                  if_exists='append',
+                                                                                  index=False)
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def read_sql_table_transactions(year=None, test_par=""):
+
+    cursor, conn = connect_to_database()
+
+    df = pd.read_sql(f"""
+        SELECT * FROM (
+            SELECT *, ROW_NUMBER() OVER(PARTITION BY TRANS_ID ORDER BY TS_CHANGED DESC) 
+            AS rn FROM transactions{test_par}) AS a
+        WHERE rn = 1 
+    """, conn)
+
+    if year:
+        df = df[df.DATE.str.startswith(str(year))].copy()
+
+    cursor.close()
+    conn.close()
+
+    df['DATE'] = pd.to_datetime(df['DATE'], format='%Y-%m-%d %H:%M:%S')
+
+    return df.drop(columns=['rn']).rename(columns={'GROUPLEVEL': 'GROUP'})

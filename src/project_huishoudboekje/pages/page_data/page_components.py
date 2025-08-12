@@ -5,7 +5,6 @@ from dash import html, dash_table
 from dash.dash_table.Format import Format
 
 from project_huishoudboekje.config import TableSettings
-# from project_huishoudboekje.app import df, df_categories
 
 
 button_style = {

@@ -94,7 +94,8 @@ modal_add_category = html.Div(
         dbc.Button("Add category", id="open", n_clicks=0,
                    style={'background-color': px.colors.qualitative.Dark2[2],
                           'border-width': '0px',
-                          'textAlign': 'left'}),
+                          'textAlign': 'left',
+                          'margin-top': '10px'}),
         dbc.Modal(
             [
                 dbc.ModalHeader(dbc.ModalTitle("Header")),
