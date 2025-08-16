@@ -18,12 +18,12 @@ from project_huishoudboekje.pages.page_dashboard import layout as layout_dashboa
 from project_huishoudboekje.pages.page_budget_actuals import layout as layout_budget_actuals
 from project_huishoudboekje.pages.page_data import layout as layout_data
 from project_huishoudboekje.pages.page_settings import layout as layout_settings
+from project_huishoudboekje.utils.general_components import get_label_style
 
 from project_huishoudboekje.config import GeneralSettings as GenSet
 from project_huishoudboekje.read_rabo import ReadRabo
 from project_huishoudboekje.read_asn import ReadAsn
 from project_huishoudboekje.find_category import FindCategory
-# from project_huishoudboekje.store_results import StoreResults
 
 # List of months for table use
 month_names = [f'{GenSet.year_selected}-0' + str(i) for i in list(range(1, 10))] + [
@@ -85,19 +85,9 @@ def import_file_and_update_database(list_of_contents, list_of_names):
 
         lst_source_files = files_in_budget()
 
-        return lst_source_files
+        return get_label_style(lst_source_files)
 
 
-# Settings: close modal that no file is selected
-@app.callback(Output('modal-no-selection', 'is_open', allow_duplicate=True),
-              Input('no-selection-close', 'n_clicks'),
-              prevent_initial_call=True)
-def close_no_selection(n_clicks):
-    if n_clicks:
-        return False
-
-
-# todo: check of deze callback echt nodig is i.c.m. vorige
 # Settings: no file selected to remove
 @app.callback(Output('modal-remove-file', 'is_open', allow_duplicate=True),
               Input('no-remove-file', 'n_clicks'),
@@ -114,11 +104,11 @@ def close_no_selection(n_clicks):
               Input('yes-remove-file', 'n_clicks'),
               State('checklist-remove-files', 'value'),
               prevent_initial_call=True)
-def delete_files_from_budget(n_clicks, selection):
+def del_files_from_budget(n_clicks, selection):
     if ctx.triggered[0]['prop_id'].split('.')[0] == 'yes-remove-file':
         src_files = delete_files_from_budget(selection)
 
-        return False, src_files, []
+        return False, get_label_style(src_files), []
 
 
 # Settings: open modal to confirm if files need to be removed
@@ -187,7 +177,7 @@ def open_modal_edit_category(active_cell, data):
 # Settings: submit changes from edit modal
 @app.callback(Output('modal-edit', 'is_open', allow_duplicate=True),
               Output('table-category', 'data', allow_duplicate=True),
-              Input('close-edit', 'n_clicks'),
+              # Input('close-edit', 'n_clicks'),
               Input('submit-cat-edit', 'n_clicks'),
               State('group-edit', 'value'),
               State('category-edit', 'value'),
@@ -196,9 +186,9 @@ def open_modal_edit_category(active_cell, data):
               State('table-category', 'active_cell'),
               State('table-category', 'data'),
               prevent_initial_call=True)
-def submit_changes_edit(n1, n2, group, cat, sy, ey, active_cell, data):
+def submit_changes_edit(n2, group, cat, sy, ey, active_cell, data):
     if ctx.triggered_id == 'close-edit':
-        df_cats = read_sql_table_cats()
+        df_cats = read_sql_table_cats(add_edit_emoji=True, add_remove_emoji=True)
         return False, df_cats
     else:
         row = data[active_cell['row']]
@@ -219,7 +209,7 @@ def submit_changes_edit(n1, n2, group, cat, sy, ey, active_cell, data):
      Output("modal", "is_open"),
      Output('table-category', 'data'),
      Input("open", "n_clicks"),
-     Input("close", "n_clicks"),
+     # Input("close", "n_clicks"),
      Input('submit-cat', 'n_clicks'),
      State("modal", "is_open"),
      State('group', 'value'),
@@ -227,7 +217,7 @@ def submit_changes_edit(n1, n2, group, cat, sy, ey, active_cell, data):
      State('startyear', 'value'),
      State('endyear', 'value'),
 )
-def add_new_category(n1, n2, n3, is_open, group, cat, startyear, endyear):
+def add_new_category(n1, n3, is_open, group, cat, startyear, endyear):
 
     df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
 

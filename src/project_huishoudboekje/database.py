@@ -72,7 +72,7 @@ def files_in_budget():
 
     cursor, conn = connect_to_database()
 
-    df = pd.read_sql("""SELECT distinct(source_file) FROM budget""", conn)
+    df = pd.read_sql("""SELECT distinct(source_file) FROM budget order by source_file""", conn)
 
     cursor.close()
     conn.close()
@@ -88,12 +88,12 @@ def delete_files_from_budget(selection):
 
     conn.commit()
 
-    df_budget_sources = pd.read_sql("""SELECT * FROM budget""", conn)
+    df = pd.read_sql("""SELECT distinct(source_file) FROM budget order by source_file""", conn)
 
     cursor.close()
     conn.close()
 
-    return df_budget_sources.source_file.unique()
+    return df.iloc[:, 0].to_list()
 
 
 def remove_category(row):

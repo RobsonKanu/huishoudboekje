@@ -8,14 +8,18 @@ modal_no_selection = html.Div(
     [
         dbc.Modal(
             [
+                dbc.ModalHeader(close_button=True),
                 dbc.ModalBody(
-                    'Geen bestand geselecteerd.'
+                    'No file selected.'
                 ),
-                dbc.ModalFooter(
-                    html.Div([
-                        dbc.Button("Close", id="no-selection-close", n_clicks=0),
-                    ])
-                ),
+                # dbc.ModalFooter(
+                #     html.Div([
+                #         dbc.Button("Close", id="no-selection-close", n_clicks=0,
+                #                    style={'background-color': px.colors.qualitative.Dark2[2],
+                #                           'border-width': '0px'}
+                #                    ),
+                #     ])
+                # ),
             ],
             id="modal-no-selection",
             is_open=False,
@@ -28,12 +32,19 @@ modal_remove_file = html.Div(
         dbc.Modal(
             [
                 dbc.ModalBody(
-                    'Wil je de geselecteerde bestanden verwijderen?'
+                    'Remove selected files?'
                 ),
                 dbc.ModalFooter(
                     html.Div([
-                        dbc.Button("Yes", id="yes-remove-file", n_clicks=0),
-                        dbc.Button("No", id="no-remove-file", className="ms-auto", n_clicks=0)
+                        dbc.Button("Yes", id="yes-remove-file", n_clicks=0,
+                                   style={'background-color': px.colors.qualitative.Dark2[2],
+                                          'border-width': '0px',
+                                          'margin-right': '5px'}
+                                   ),
+                        dbc.Button("No", id="no-remove-file", className="ms-auto", n_clicks=0,
+                                   style={'background-color': px.colors.qualitative.Dark2[2],
+                                          'border-width': '0px'}
+                                   )
                     ])
                 ),
             ],
@@ -52,8 +63,15 @@ modal_remove = html.Div(
                 ),
                 dbc.ModalFooter(
                     html.Div([
-                        dbc.Button("Yes", id="yes-remove", n_clicks=0),
-                        dbc.Button("No", id="no-remove", className="ms-auto", n_clicks=0)
+                        dbc.Button("Yes", id="yes-remove", n_clicks=0,
+                                   style={'background-color': px.colors.qualitative.Dark2[2],
+                                          'border-width': '0px',
+                                          'margin-right': '5px'}
+                                   ),
+                        dbc.Button("No", id="no-remove", className="ms-auto", n_clicks=0,
+                                   style={'background-color': px.colors.qualitative.Dark2[2],
+                                          'border-width': '0px'}
+                                   )
                     ])
                 ),
             ],
@@ -67,7 +85,7 @@ modal_edit = html.Div(
     [
         dbc.Modal(
             [
-                dbc.ModalHeader(dbc.ModalTitle("Header")),
+                dbc.ModalHeader(dbc.ModalTitle("Category settings"), close_button=True),
                 dbc.ModalBody(
                     html.Div([
                         html.Div(['Group', dbc.Input(id='group-edit')]),
@@ -78,8 +96,11 @@ modal_edit = html.Div(
                 ),
                 dbc.ModalFooter(
                     html.Div([
-                        dbc.Button("Submit", id="submit-cat-edit", n_clicks=0),
-                        dbc.Button("Close", id="close-edit", className="ms-auto", n_clicks=0)
+                        dbc.Button("Submit", id="submit-cat-edit", n_clicks=0,
+                                   style={'background-color': px.colors.qualitative.Dark2[2],
+                                          'border-width': '0px'}
+                                   )
+                        # dbc.Button("Close", id="close-edit", className="ms-auto", n_clicks=0)
                     ])
                 ),
             ],
@@ -94,11 +115,12 @@ modal_add_category = html.Div(
         dbc.Button("Add category", id="open", n_clicks=0,
                    style={'background-color': px.colors.qualitative.Dark2[2],
                           'border-width': '0px',
-                          'textAlign': 'left',
+                          'textAlign': 'center',
+                          'width': '200px',
                           'margin-top': '10px'}),
         dbc.Modal(
             [
-                dbc.ModalHeader(dbc.ModalTitle("Header")),
+                dbc.ModalHeader(dbc.ModalTitle("Category settings"), close_button=True),
                 dbc.ModalBody(
                     html.Div([
                         html.Div(['Group', dbc.Input(id='group')]),
@@ -109,8 +131,21 @@ modal_add_category = html.Div(
                 ),
                 dbc.ModalFooter(
                     html.Div([
-                        dbc.Button("Submit", id="submit-cat", n_clicks=0),
-                        dbc.Button("Close", id="close", className="ms-auto", n_clicks=0)
+                        dbc.Button("Save", id="submit-cat", n_clicks=0,
+                                   style={'background-color': px.colors.qualitative.Dark2[2],
+                                          'border-width': '0px',
+                                          # 'textAlign': 'left',
+                                          # 'margin-top': '10px',
+                                          # 'margin-right': '5px'
+                                          }
+                                   ),
+                        # dbc.Button("Close", id="close", className="ms-auto", n_clicks=0,
+                        #            style={'background-color': px.colors.qualitative.Dark2[2],
+                        #                   'border-width': '0px',
+                        #                   # 'textAlign': 'left',
+                        #                   # 'margin-top': '10px'
+                        #                   }
+                        #            )
                     ])
                 ),
             ],
