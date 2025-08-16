@@ -1,341 +1,400 @@
 
-import plotly.express as px
-from dash import dash_table, Dash, html, dcc
-from dash.dependencies import Input, Output, State
-from dash.dash_table import FormatTemplate
-
+import os
 import uuid
-import numpy as np
 import pandas as pd
 
 from datetime import date
+from dash import Dash, html, dcc, ctx
+from dash.dependencies import Input, Output, State
+
+from project_huishoudboekje.config import AppSettings
+from project_huishoudboekje.database import (
+    read_sql_table_cats, files_in_budget, delete_files_from_budget,
+    remove_category, add_category, add_transactions_to_db, read_sql_table_transactions)
+from project_huishoudboekje.utils.prep_data import (prepare_data, prepare_data_budget, parse_contents_file_import,
+                                                    group_data_for_table)
+from project_huishoudboekje.components.navbar import navbar
+from project_huishoudboekje.pages.page_dashboard import layout as layout_dashboard
+from project_huishoudboekje.pages.page_budget_actuals import layout as layout_budget_actuals
+from project_huishoudboekje.pages.page_data import layout as layout_data
+from project_huishoudboekje.pages.page_settings import layout as layout_settings
+from project_huishoudboekje.utils.general_components import get_label_style
+
+from project_huishoudboekje.config import GeneralSettings as GenSet
+from project_huishoudboekje.read_rabo import ReadRabo
+from project_huishoudboekje.read_asn import ReadAsn
+from project_huishoudboekje.find_category import FindCategory
+
+# List of months for table use
+month_names = [f'{GenSet.year_selected}-0' + str(i) for i in list(range(1, 10))] + [
+    f'{GenSet.year_selected}-' + str(i) for i in list(range(10, 13))]
 
-from project_huishoudboekje.config import GeneralSettings, TableSettings, AppSettings
-from project_huishoudboekje.graphs import \
-    graph_group_month, graph_groups, graph_total, graph_total_delta, graph_groups_delta
-from project_huishoudboekje.page_layouts import get_nav_bar, get_page_1_graphs, get_page_1_selector, \
-    get_page_1_table_actuals, get_page_1_table_budget, get_page_2_table, get_page_2_button
+# Load data transactions
+df_data = read_sql_table_transactions(year=GenSet.year_selected, test_par=GenSet.test_par).sort_values(
+    by='DATE', ascending=False)
+
+# Prepare data for analysis
+df_analysis = prepare_data(df_data)
+
+# Refactor date column
+df_data.DATE = pd.DatetimeIndex(df_data.DATE).strftime("%Y-%m-%d")
+
+# Load categories
+df_categories = read_sql_table_cats(to_records=False, fill_nan_end_year=True).astype(
+    {'begin_year': 'int', 'end_year': 'int'})
+
+df_categories = df_categories[(df_categories.begin_year <= GenSet.year_selected) & (
+        df_categories.end_year >= GenSet.year_selected)].drop(
+    columns=['begin_year', 'end_year']).rename(columns={'grouplevel': 'group'})
+
+df_categories.columns = df_categories.columns.str.upper()
+
+df_budget = prepare_data_budget(df_analysis['DATE'].max(), GenSet.year_selected)
+
+# Initialize app
+app = Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=AppSettings().style_sheet)
+
+app.layout = html.Div([
+    dcc.Location(id='url', refresh=False),
+    html.Div(id='page-content')
+])
+
+
+# Dashboard: table actuals and budget for selected group
+@app.callback(Output('data-groups', 'data'),
+              Output('data-groups-budget', 'data'),
+              Input('dropdown-groups', 'value'))
+def get_tables_for_selected_group(selected_value):
+    global df_analysis, df_budget, month_names
+
+    df_pivot_actuals = group_data_for_table(df_analysis, selected_value, 'AMOUNT_NW', month_names)
+    df_pivot_budget = group_data_for_table(df_budget, selected_value, 'BUDGET', month_names)
+
+    return df_pivot_actuals, df_pivot_budget
+
+
+# Settings: import budget files
+@app.callback(Output('checklist-remove-files', 'options', allow_duplicate=True),
+              Input('upload-data', 'contents'),
+              State('upload-data', 'filename'),
+              prevent_initial_call=True)
+def import_file_and_update_database(list_of_contents, list_of_names):
+    if list_of_contents is not None:
+        for contents, filename in zip(list_of_contents, list_of_names):
+            parse_contents_file_import(contents, filename)
+
+        lst_source_files = files_in_budget()
+
+        return get_label_style(lst_source_files)
+
+
+# Settings: no file selected to remove
+@app.callback(Output('modal-remove-file', 'is_open', allow_duplicate=True),
+              Input('no-remove-file', 'n_clicks'),
+              prevent_initial_call=True)
+def close_no_selection(n_clicks):
+    if n_clicks:
+        return False
+
+
+# Settings: delete file(s) from budget and update database
+@app.callback(Output('modal-remove-file', 'is_open', allow_duplicate=True),
+              Output('checklist-remove-files', 'options', allow_duplicate=True),
+              Output('checklist-remove-files', 'value'),
+              Input('yes-remove-file', 'n_clicks'),
+              State('checklist-remove-files', 'value'),
+              prevent_initial_call=True)
+def del_files_from_budget(n_clicks, selection):
+    if ctx.triggered[0]['prop_id'].split('.')[0] == 'yes-remove-file':
+        src_files = delete_files_from_budget(selection)
+
+        return False, get_label_style(src_files), []
+
+
+# Settings: open modal to confirm if files need to be removed
+@app.callback(Output('modal-remove-file', 'is_open'),
+              Output('modal-no-selection', 'is_open'),
+              Input('remove-files', 'n_clicks'),
+              State('checklist-remove-files', 'value'))
+def open_modal_remove_files(n_clicks, val):
+    if n_clicks and val:
+        return True, False
+
+    if n_clicks and not val:
+        return False, True
+
+    return False, False
+
+
+# Settings: modal to remove category from table
+@app.callback(Output('modal-remove', 'is_open', allow_duplicate=True),
+              Output('table-category', 'data', allow_duplicate=True),
+              Input('yes-remove', 'n_clicks'),
+              Input('no-remove', 'n_clicks'),
+              State('table-category', 'active_cell'),
+              State('table-category', 'data'),
+              prevent_initial_call=True
+              )
+def remove_or_keep_category(ny, nn, active_cell, data):
+    row = data[active_cell['row']]
+
+    if nn:
+        df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
+        return False, df_cats
+    if ny:
+        remove_category(row)
+
+        df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
+
+        return False, df_cats
+
+
+# Settings: open modal to change category
+@app.callback(Output('modal-edit', 'is_open'),
+              Output('modal-remove', 'is_open'),
+              Output('group-edit', 'value'),
+              Output('category-edit', 'value'),
+              Output('startyear-edit', 'value'),
+              Output('endyear-edit', 'value'),
+              Input('table-category', 'active_cell'),
+              State('table-category', 'data')
+              )
+def open_modal_edit_category(active_cell, data):
+
+    if not active_cell:
+        return False, False, None, None, None, None
+
+    row = data[active_cell['row']]
+
+    if active_cell['column'] == 4:
+        return True, False, row['grouplevel'], row['category'], row['begin_year'], row['end_year']
+    elif active_cell['column'] == 5:
+        return False, True, None, None, None, None
+    else:
+        return False, False, None, None, None, None
+
+
+# Settings: submit changes from edit modal
+@app.callback(Output('modal-edit', 'is_open', allow_duplicate=True),
+              Output('table-category', 'data', allow_duplicate=True),
+              # Input('close-edit', 'n_clicks'),
+              Input('submit-cat-edit', 'n_clicks'),
+              State('group-edit', 'value'),
+              State('category-edit', 'value'),
+              State('startyear-edit', 'value'),
+              State('endyear-edit', 'value'),
+              State('table-category', 'active_cell'),
+              State('table-category', 'data'),
+              prevent_initial_call=True)
+def submit_changes_edit(n2, group, cat, sy, ey, active_cell, data):
+    if ctx.triggered_id == 'close-edit':
+        df_cats = read_sql_table_cats(add_edit_emoji=True, add_remove_emoji=True)
+        return False, df_cats
+    else:
+        row = data[active_cell['row']]
+
+        # remove current category
+        remove_category(row)
+
+        # insert changed category
+        add_category((f'{group}_{cat}_{sy}', group, cat, sy, ey))
+
+        df_cats = read_sql_table_cats(add_edit_emoji=True, add_remove_emoji=True)
+
+        return False, df_cats
+
+
+# Settings: add new category to database
+@app.callback(
+     Output("modal", "is_open"),
+     Output('table-category', 'data'),
+     Input("open", "n_clicks"),
+     # Input("close", "n_clicks"),
+     Input('submit-cat', 'n_clicks'),
+     State("modal", "is_open"),
+     State('group', 'value'),
+     State('category', 'value'),
+     State('startyear', 'value'),
+     State('endyear', 'value'),
+)
+def add_new_category(n1, n3, is_open, group, cat, startyear, endyear):
+
+    df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
 
+    if not ctx.triggered_id:
+        button_id = 'No clicks yet'
+    else:
+        button_id = ctx.triggered_id
 
-# todo: add warning duplicate records in data
-class App(object):
-    def run(self):
+    if button_id == 'submit-cat':
+        # todo: check input
 
-        # Year used in dashboard
-        sel_year = GeneralSettings.year_selected
-
-        # Load data transactions
-        df = pd.read_excel(GeneralSettings.project_path / 'data/processed/transactions.xlsx').sort_values(
-            by='DATE', ascending=False)
-
-        # Filter data for selected year
-        df = df[(df['DATE'] >= f'{sel_year}-01-01') & (df['DATE'] < f'{sel_year+1}-01-01')].copy(deep=True)
-
-        # Load categories
-        df_categories = pd.read_excel(GeneralSettings.project_path / 'data/categories.xlsx')
-
-        df_categories = df_categories[df_categories[sel_year] == 1].drop(columns=[2022, 2023])
-
-        # Prepare data for analysis
-        df_analysis = self.prepare_data(df)
-        df_budget = self.prepare_data_budget(df_analysis['DATE'].max(), sel_year)
-
-        # Get all unique groups
-        available_groups = df_analysis.GROUP.unique()
-
-        # List of months for table use
-        month_names = [f'{sel_year}-0' + str(i) for i in list(range(1, 10))] + [
-            f'{sel_year}-' + str(i) for i in list(range(10, 13))]
-
-        # Get graphs
-        fig_group_month = graph_group_month(df_analysis)
-        fig_groups = graph_groups(df_analysis, 'Totals by expense group')
-        fig_totals = graph_total(df_analysis, "Total income and expenses per month")
-
-        fig_totals_actual = graph_total(df_analysis, 'Actual')
-        fig_groups_actual = graph_groups(df_analysis, 'Actual')
-        fig_groups_budget = graph_groups(df_budget, 'Budget')
-        fig_totals_budget = graph_total(df_budget, 'Budget')
-
-        fig_totals_delta = graph_total_delta(df_budget, df_analysis)
-        fig_groups_delta = graph_groups_delta(df_budget, df_analysis)
-
-        # Refactor date column
-        df.DATE = pd.DatetimeIndex(df.DATE).strftime("%Y-%m-%d")
-
-        # Initialize app
-        app = Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=AppSettings().style_sheet)
-
-        app.layout = html.Div([
-            dcc.Location(id='url', refresh=False),
-            html.Div(id='page-content')
-        ])
-
-        navbar = get_nav_bar()
-
-        page_1_layout = html.Div([
-            navbar,
-            get_page_1_graphs(fig_totals, fig_groups, fig_group_month),
-            get_page_1_selector(available_groups),
-            get_page_1_table_actuals(month_names),
-            get_page_1_table_budget(month_names)
-        ])
-
-        @app.callback(Output('data-groups', 'data'),
-                      [Input('dropdown-groups', 'value')])
-        def update_rows(selected_value):
-            df_sel = pd.pivot_table(df_analysis[df_analysis.GROUP == selected_value], values='AMOUNT_NW',
-                                    index=['CATEGORY'], columns=['YEAR_MONTH'], aggfunc=np.sum).reset_index()
-
-            for col in month_names:
-                if col not in df_sel.columns:
-                    df_sel[col] = 0.0
-
-            df_sel['Total'] = df_sel[month_names].sum(axis=1)
-            df_sel = df_sel.fillna(0).sort_values(by=['CATEGORY'], ascending=True)
-            df_sel.loc['Total'] = df_sel.sum()
-            df_sel.loc['Total', 'CATEGORY'] = 'Total'
-
-            return df_sel.round(2).to_dict('records')
-
-        @app.callback(Output('data-groups-budget', 'data'),
-                      [Input('dropdown-groups', 'value')])
-        def update_rows_budget(selected_value):
-            df_budget = pd.read_excel(GeneralSettings.project_path / f'data/budget{GeneralSettings.year_selected}.xlsx')
-
-            df_sel = pd.pivot_table(df_budget[df_budget.GROUP == selected_value], values='BUDGET',
-                                    index=['CATEGORY'], columns=['YEAR_MONTH'], aggfunc=np.sum).reset_index()
-
-            for col in month_names:
-                if col not in df_sel.columns:
-                    df_sel[col] = 0.0
-
-            df_sel['Total'] = df_sel[month_names].sum(axis=1)
-            df_sel = df_sel.fillna(0).sort_values(by=['CATEGORY'], ascending=True)
-            df_sel.loc['Total'] = df_sel.sum()
-            df_sel.loc['Total', 'CATEGORY'] = 'Total'
-
-            return df_sel.round(2).to_dict('records')
-
-        page_2_layout = html.Div([
-            navbar,
-            get_page_2_table(df, df_categories),
-            html.Button('Add transaction', id='editing-rows-button', n_clicks=0,
-                        style=get_page_2_button()),
-            html.Button(id="save-button", n_clicks=0, children="Save",
-                        style=get_page_2_button()),
-            html.Div(id="output-1", children="Press button to save changes"),
-        ])
-
-        width_figures = '450px'
-
-        page_3_layout = html.Div([
-            navbar,
-            html.Br(),
-            html.Div([
-                html.Div(
-                    [html.I("Total income and expenses per month", style={'font-family': 'sans-serif',
-                                                   'font-style': 'normal'})],
-                    style={'width': '29%', 'backgroundColor': px.colors.qualitative.Pastel2[2], 'padding': '5px',
-                           'margin-left': '20px', 'margin-right': '20px', 'textAlign': 'center'}),
-                html.Div(
-                    [html.I("Totals by expense group", style={'width': '130px', 'height': '35px', 'padding-top': '7px',
-                                                   'padding-left': '7px',
-                                                   'textAlign': 'center', 'font-family': 'sans-serif',
-                                                   'font-style': 'normal'})],
-                    style={'width': '29%', 'backgroundColor': px.colors.qualitative.Pastel2[2], 'padding': '5px',
-                           'margin-left': '20px', 'margin-right': '20px', 'textAlign': 'center'}),
-                html.Div(
-                    [html.I("Comparison per category", style={'width': '130px', 'height': '35px', 'padding-top': '7px',
-                                                       'padding-left': '7px',
-                                                       'textAlign': 'center', 'font-family': 'sans-serif',
-                                                       'font-style': 'normal'})],
-                    style={'width': '40%', 'backgroundColor': px.colors.qualitative.Pastel2[2], 'padding': '5px',
-                           'margin-left': '20px', 'margin-right': '20px', 'textAlign': 'center'})],
-                style={'display': 'flex'}
-            ),
-            html.Br(),
-            html.Div([
-                html.Div([
-                    dcc.Graph(
-                        id='total-graph', figure=fig_totals_actual, style={'width': width_figures, 'height': '25vh'}),
-                    dcc.Graph(
-                        id='total-graph', figure=fig_totals_budget, style={'width': width_figures, 'height': '25vh'}),
-                    dcc.Graph(
-                        id='total-graph', figure=fig_totals_delta, style={'width': width_figures, 'height': '25vh'})
-                ], style={'width': '29%', 'margin-left': '10px', 'margin-right': '0px'}),
-                html.Div([
-                    dcc.Graph(
-                        id='group-graph', figure=fig_groups_actual, style={'width': width_figures, 'height': '25vh'}),
-                    dcc.Graph(
-                        id='group-graph', figure=fig_groups_budget, style={'width': width_figures, 'height': '25vh'}),
-                    dcc.Graph(
-                        id='group-graph', figure=fig_groups_delta, style={'width': width_figures, 'height': '25vh'})
-                ], style={'width': '29%', 'margin-left': '10px', 'margin-right': '0px'}),
-                html.Div([
-                    html.Div([
-                        html.I("Select view: ", style={'width': '130px', 'height': '35px', 'padding-top': '7px',
-                                                       'padding-left': '7px',
-                                                       'textAlign': 'left', 'font-family': 'sans-serif',
-                                                       'font-style': 'normal'}),
-                        dcc.Dropdown(id='dropdown-view',
-                                     options=[{'label': i, 'value': i} for i in ['Total', 'YTD']],
-                                     value='YTD',
-                                     style={'width': '100px', 'height': '35px', 'font-family': 'sans-serif',
-                                            'font-style': 'normal', 'font-size': '14px'})
-                    ], style={'display': 'flex'}),
-                    html.Div([
-                        dash_table.DataTable(
-                            id='data-view', columns=[
-                                {'id': 'CATEGORY', 'name': 'Category'},
-                                {'id': 'BUDGET', 'name': 'Budget', 'type': 'numeric',
-                                 'format': TableSettings().euro_format},
-                                {'id': 'AMOUNT_NW', 'name': 'Actuals', 'type': 'numeric',
-                                 'format': TableSettings().euro_format},
-                                {'id': 'DELTA', 'name': 'Delta', 'type': 'numeric',
-                                 'format': TableSettings().euro_format},
-                                {'id': 'RATIO', 'name': 'Ratio', 'type': 'numeric',
-                                 'format': FormatTemplate.percentage(0)}],
-                            style_table={'height': '500px', 'overflowY': 'scroll'},
-                            style_cell_conditional=[{'if': {'column_id': 'CATEGORY'}, 'textAlign': 'left'}],
-                            style_as_list_view=True,
-                            style_cell={'padding': '5px', 'font_family': 'sans-serif', 'font_size': '12px'},
-                            style_data_conditional=[
-                                {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(220, 220, 220)'},
-                                {"if": {"column_id": "Total"}, "fontWeight": "bold",
-                                 'backgroundColor': px.colors.qualitative.Pastel2[2]},
-                                {'if': {'filter_query': '{{CATEGORY}} = {}'.format("Total"),},
-                                 'backgroundColor': px.colors.qualitative.Set2[2], 'color': 'white'},
-                                {'if': {'filter_query': '{RATIO} > 1', 'column_id': 'RATIO'},
-                                 'backgroundColor': '#EF553B', 'color': 'white'},
-                                {'if': {'filter_query': '{RATIO} < 1', 'column_id': 'RATIO'},
-                                 'backgroundColor': '#B6E880'}],
-                            style_header={
-                                'backgroundColor': px.colors.qualitative.Dark2[2],
-                                'fontWeight': 'bold', 'color': 'white'}
-                        )
-                    ], style={'height': '100%', 'margin-left': '4px', 'margin-right': '4px', 'margin-top': '4px'})
-                ], style={'width': '40%', 'margin-left': '20px', 'margin-right': '20px'})
-            ], style={'height': '100%', 'display': 'flex', 'margin-bottom': '4px'})
-        ])
-
-        @app.callback(Output('data-view', 'data'),
-                      [Input('dropdown-view', 'value')])
-        def create_table_output(view_value):
-
-            df = pd.read_excel(GeneralSettings.project_path / 'data/processed/transactions.xlsx').sort_values(
-                by='DATE', ascending=False)
-
-            df = df[df.GROUP != 'Inkomsten']
-
-            df_budget = pd.read_excel(GeneralSettings.project_path / f'data/budget{GeneralSettings.year_selected}.xlsx')
-            df_budget['DATE'] = pd.to_datetime(df_budget['YEAR_MONTH'], format='%Y-%m')
-            df_budget = df_budget[df_budget.GROUP != 'Inkomsten']
-
-            df_analysis = self.prepare_data(df)
-
-            if view_value == 'YTD':
-                ref_date = date.today().replace(day=1)
-
-                df_analysis = df_analysis[df_analysis['DATE'] < ref_date.strftime('%Y-%m-%d')]
-                df_budget = df_budget[df_budget['DATE'] < ref_date.strftime('%Y-%m-%d')]
-
-            df_analysis_tot = df_analysis.groupby('CATEGORY')['AMOUNT_NW'].sum()
-            df_budget_tot = df_budget.groupby('CATEGORY')['BUDGET'].sum()
-
-            df_tot = pd.concat([df_budget_tot, df_analysis_tot], axis=1).fillna(0).sort_values(
-                by='AMOUNT_NW', ascending=False)
-
-            df_tot.loc['Total'] = df_tot.sum()
-
-            df_tot['DELTA'] = df_tot['BUDGET'] - df_tot['AMOUNT_NW']
-            df_tot['RATIO'] = df_tot['AMOUNT_NW'] / df_tot['BUDGET']
-
-            return df_tot.reset_index().round(2).to_dict('records')
-
-        @app.callback(
-            Output('page-2-content', 'data'),
-            Output('editing-rows-button', 'n_clicks'),
-            Input('editing-rows-button', 'n_clicks'),
-            State('page-2-content', 'data'),
-            State('page-2-content', 'columns'),
-            State('page-2-content', 'active_cell'),
-            State('page-2-content', 'page_current'))
-        def add_row(n_clicks, rows, columns, active_cell, page_num):
-            if n_clicks > 0:
-
-                if active_cell:
-                    row_insert = active_cell['row'] + page_num * 15 + 1
-                else:
-                    row_insert = 0
-
-                rows.insert(row_insert, {c['id']: '' for c in columns})
-
-                n_clicks = 0
-
-            return rows, n_clicks
-
-        @app.callback(
-            Output("output-1", "children"),
-            [Input("save-button", "n_clicks")],
-            [State("page-2-content", "data")]
-        )
-        def selected_data_to_csv(nclicks, table1):
-            if nclicks > 0:
-                df_out = pd.DataFrame(table1)
-                df_out['DATE'] = pd.to_datetime(df_out['DATE'], format='%Y-%m-%d')
-                df_out['TRANS_ID'] = df_out['TRANS_ID'].apply(lambda x: uuid.uuid4() if x == '' else x)
-                df_out['TRANSACTION_TYPE'] = df_out['TRANSACTION_TYPE'].apply(lambda x: '-' if x == '' else x)
-
-                df_out = df_out.drop('GROUP', axis=1).merge(
-                    df_categories, how='left', left_on='CATEGORY', right_on='CATEGORY')
-
-                df_out.to_excel(GeneralSettings.project_path / 'data/processed/transactions.xlsx', index=False)
-                return "Data Submitted"
-
-        # Update the index
-        @app.callback(Output('page-content', 'children'),
-                  [Input('url', 'pathname')])
-        def display_page(pathname):
-            if pathname == '/dashboard':
-                return page_1_layout
-            elif pathname == '/data':
-                return page_2_layout
-            elif pathname == '/budget':
-                return page_3_layout
-            else:
-                return page_1_layout
-            # You could also return a 404 "URL not found" page here
-
-        app.run_server(debug=False)
-
-
-    def prepare_data(self, df):
-
-        # Filter data for analysis indicator
-        df_analysis = df.loc[df.ANALYSE_IND == 1].copy(deep=True)
-
-        # Create year-month column
-        df_analysis['YEAR_MONTH'] = pd.DatetimeIndex(df_analysis.DATE).strftime("%Y-%m")
-
-        # Create new amount column
-        df_analysis['AMOUNT_NW'] = df_analysis.apply(
-            lambda x: -x['AMOUNT'] if ((x['FINANCIAL_TYPE'] == 'credit') & (x['GROUP'] != 'Inkomsten')) | (
-                    (x['FINANCIAL_TYPE'] == 'debet') & (x['GROUP'] == 'Inkomsten')) else x['AMOUNT'], axis=1)
-
-        # Create income indicator
-        df_analysis['INCOME_IND'] = df['GROUP'].apply(lambda x: x if x == 'Inkomsten' else 'Uitgaven')
-
-        return df_analysis
-
-    def prepare_data_budget(self, ref_date, sel_year):
-
-        df = pd.read_excel(GeneralSettings.project_path / f'data/budget{sel_year}.xlsx')
-
-        df['DATE'] = pd.to_datetime(df['YEAR_MONTH'], format='%Y-%m')
-
-        df['AMOUNT_NW'] = df.apply(lambda x: x['BUDGET'] if x['GROUP'] == 'Inkomsten' else x['BUDGET'], axis=1)
-
-        df['INCOME_IND'] = df['GROUP'].apply(lambda x: x if x == 'Inkomsten' else 'Uitgaven')
-
-        return df[df.DATE <= ref_date].copy(deep=True)
+        params = (f'{group}_{cat}_{startyear}', group, cat, startyear, endyear)
+        add_category(params)
+
+        df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
+
+        return not is_open, df_cats
+
+    if button_id == 'open' or button_id == 'close':
+        return not is_open, df_cats
+
+    return is_open, df_cats
+
+
+# Budget vs Actuals: table with sum per category for actuals and budget
+@app.callback(Output('data-view', 'data'),
+              [Input('dropdown-view', 'value')])
+def create_table_output(view_value):
+
+    df_raw = read_sql_table_transactions(year=GenSet.year_selected, test_par=GenSet.test_par).sort_values(
+        by='DATE', ascending=False)
+
+    df_raw = df_raw[df_raw.GROUP != 'Inkomsten'].copy()
+
+    df_act = prepare_data(df_raw)
+
+    if view_value == 'YTD':
+        ref_date = date.today().replace(day=1)
+
+        df_bud = prepare_data_budget(ref_date=ref_date,
+                                     sel_year=GenSet.year_selected,
+                                     exclude_income=True,
+                                     rename_budget=False)
+
+        df_act = df_act[df_act['DATE'] < ref_date.strftime('%Y-%m-%d')]
+    else:
+        df_bud = prepare_data_budget(ref_date=None,
+                                     sel_year=GenSet.year_selected,
+                                     exclude_income=True,
+                                     rename_budget=False)
+
+    df_act_tot = df_act.groupby('CATEGORY')['AMOUNT_NW'].sum()
+    df_bud_tot = df_bud.groupby('CATEGORY')['BUDGET'].sum()
+
+    df_tot = pd.concat([df_bud_tot, df_act_tot], axis=1).fillna(0).sort_values(
+        by='AMOUNT_NW', ascending=False)
+
+    df_tot.loc['Total'] = df_tot.sum()
+
+    df_tot['DELTA'] = df_tot['BUDGET'] - df_tot['AMOUNT_NW']
+    df_tot['RATIO'] = df_tot['AMOUNT_NW'] / df_tot['BUDGET']
+
+    return df_tot.reset_index().round(2).to_dict('records')
+
+
+# Data: add row to table
+@app.callback(
+    Output('page-2-content', 'data'),
+    Output('editing-rows-button', 'n_clicks'),
+    Input('editing-rows-button', 'n_clicks'),
+    State('page-2-content', 'data'),
+    State('page-2-content', 'columns'),
+    State('page-2-content', 'active_cell'),
+    State('page-2-content', 'page_current'))
+def add_row(n_clicks, rows, columns, active_cell, page_num):
+    if n_clicks > 0:
+
+        if active_cell:
+            row_insert = active_cell['row'] + page_num * 15 + 1
+        else:
+            row_insert = 0
+
+        rows.insert(row_insert, {c['id']: '' for c in columns})
+
+        n_clicks = 0
+
+    return rows, n_clicks
+
+
+# Data: show duplicate transactions
+@app.callback(
+    Output('modal-duplicate-trans', 'is_open', allow_duplicate=True),
+    Output('data-duplicates', 'data'),
+    Input('duplicate-trans-button', 'n_clicks'),
+    State("page-2-content", "data"),
+    prevent_initial_call=True
+)
+def show_duplicates(n_clicks, table):
+    if n_clicks > 0:
+
+        df_dup = pd.DataFrame(table)[['DATE', 'PARTY', 'AMOUNT']]
+
+        return True, df_dup[df_dup.duplicated()].to_dict('records')
+    else:
+        return False, None
+
+
+# Data: close modal of duplicate transactions
+@app.callback(
+    Output('modal-duplicate-trans', 'is_open', allow_duplicate=True),
+    Input('close-modal-duplicate-trans', 'n_clicks'),
+    prevent_initial_call=True
+)
+def close_modal_duplicate_trans(n_clicks):
+    if n_clicks > 0:
+        return False
+    else:
+        return True
+
+
+@app.callback(
+    Output("output-1", "children"),
+    Input("save-button", "n_clicks"),
+    State("page-2-content", "data"))
+def export_data_to_excel(nclicks, table1):
+    if nclicks > 0:
+        global df_categories
+
+        df_out = pd.DataFrame(table1)
+        df_out['DATE'] = pd.to_datetime(df_out['DATE'], format='%Y-%m-%d')
+        df_out['TRANS_ID'] = df_out['TRANS_ID'].apply(lambda x: uuid.uuid4() if ((x == '') or (x is None)) else x)
+        df_out['TRANSACTION_TYPE'] = df_out['TRANSACTION_TYPE'].apply(lambda x: '-' if x == '' else x)
+
+        df_out = df_out.drop('GROUP', axis=1).merge(
+            df_categories, how='left', left_on='CATEGORY', right_on='CATEGORY')
+
+        add_transactions_to_db(df_out, test_par=GenSet.test_par)
+
+        # df_out.to_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx', index=False)
+        return "Data Submitted"
+
+
+# Update the index
+@app.callback(
+    Output('page-content', 'children'),
+    Input('url', 'pathname'))
+def display_page(pathname):
+    if pathname == '/dashboard':
+        return layout_dashboard.create_layout(navbar, df_analysis, month_names)
+    elif pathname == '/data':
+        return layout_data.create_layout(navbar, df_data, df_categories)
+    elif pathname == '/budget':
+        return layout_budget_actuals.create_layout(navbar, df_budget, df_analysis)
+    elif pathname == '/settings':
+        return layout_settings.create_layout(navbar)
+    else:
+        return layout_dashboard.create_layout(navbar, df_analysis, month_names)
+
+
+def run():
+    filenames_rabobank = next(os.walk(GenSet.project_path / f'data/Rabobank'), (None, None, []))[2]
+    filenames_asn_bank = next(os.walk(GenSet.project_path / f'data/ASN Bank'), (None, None, []))[2]
+
+    if filenames_rabobank:
+        df_rabo = ReadRabo().run(filenames_rabobank)
+        df_rabo = FindCategory().run(df_rabo, 'Rabobank')
+        add_transactions_to_db(df_rabo, test_par=GenSet.test_par)
+        # StoreResults().run(df_rabo)
+
+    if filenames_asn_bank:
+        df_asn = ReadAsn().run(filenames_asn_bank)
+        df_asn = FindCategory().run(df_asn, 'ASN Bank')
+        add_transactions_to_db(df_asn, test_par=GenSet.test_par)
+        # StoreResults().run(df_asn)
+
+    app.run_server(debug=True)
+
+
+if __name__ == '__main__':
+    run()

@@ -25,7 +25,6 @@ class ReadAsn(object):
 
         return df_out
 
-
     def prepare_data_asn(self, df):
 
         # Date
