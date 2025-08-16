@@ -139,13 +139,6 @@ modal_add_category = html.Div(
                                           # 'margin-right': '5px'
                                           }
                                    ),
-                        # dbc.Button("Close", id="close", className="ms-auto", n_clicks=0,
-                        #            style={'background-color': px.colors.qualitative.Dark2[2],
-                        #                   'border-width': '0px',
-                        #                   # 'textAlign': 'left',
-                        #                   # 'margin-top': '10px'
-                        #                   }
-                        #            )
                     ])
                 ),
             ],

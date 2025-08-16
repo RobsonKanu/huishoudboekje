@@ -11,7 +11,8 @@ class GeneralSettings(object):
 
     year_selected = 2025
 
-    test_par = '_test'
+    test_par = ''  # use '_test' for test and '' for production
+    debug = False
 
 
 class AppSettings(object):

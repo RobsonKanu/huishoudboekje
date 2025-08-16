@@ -12,6 +12,8 @@ button_style = {
     'font-family': 'sans-serif',
     'font-size': '14px',
     'border': 'none',
+    'width': '200px',
+    'border-radius': '5px',
     'margin-left': '2px',
     'margin-right': '2px'
 }

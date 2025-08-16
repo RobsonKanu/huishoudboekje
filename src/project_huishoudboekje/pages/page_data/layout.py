@@ -17,7 +17,7 @@ def create_layout(navbar, df_data, df_categories):
                     style=button_style),
         dbc.Modal(
             [
-                dbc.ModalHeader(dbc.ModalTitle("Duplicate transactions")),
+                dbc.ModalHeader(dbc.ModalTitle("Duplicate transactions"), close_button=True),
                 dbc.ModalBody(
                     dash_table.DataTable(id='data-duplicates',
                                          style_table={'overflowX': 'scroll'},
@@ -32,17 +32,20 @@ def create_layout(navbar, df_data, df_categories):
                                          # page_size=15,
                                          )
                 ),
-                dbc.ModalFooter(
-                    html.Div([
-                        dbc.Button("Close", id="close-modal-duplicate-trans", className="ms-auto", n_clicks=0)
-                    ])
-                ),
             ],
             id="modal-duplicate-trans",
             is_open=False,
             size='xl'
         ),
+        # todo: open modal instead of showing text
         html.Button(id="save-button", n_clicks=0, children="Save",
                     style=button_style),
-        html.Div(id="output-1", children="Press button to save changes"),
+        dbc.Modal(
+            [
+                dbc.ModalHeader(close_button=True),
+                dbc.ModalBody(html.Div(['Transactions succesfully saved.']))
+            ],
+            id='modal-transactions-saved',
+            is_open=False
+        ),
     ])

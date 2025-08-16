@@ -318,28 +318,15 @@ def add_row(n_clicks, rows, columns, active_cell, page_num):
 def show_duplicates(n_clicks, table):
     if n_clicks > 0:
 
-        df_dup = pd.DataFrame(table)[['DATE', 'PARTY', 'AMOUNT']]
+        df_dup = pd.DataFrame(table)[['TRANS_ID', 'DATE', 'PARTY', 'AMOUNT']]
 
         return True, df_dup[df_dup.duplicated()].to_dict('records')
     else:
         return False, None
 
 
-# Data: close modal of duplicate transactions
 @app.callback(
-    Output('modal-duplicate-trans', 'is_open', allow_duplicate=True),
-    Input('close-modal-duplicate-trans', 'n_clicks'),
-    prevent_initial_call=True
-)
-def close_modal_duplicate_trans(n_clicks):
-    if n_clicks > 0:
-        return False
-    else:
-        return True
-
-
-@app.callback(
-    Output("output-1", "children"),
+    Output('modal-transactions-saved', 'is_open'),
     Input("save-button", "n_clicks"),
     State("page-2-content", "data"))
 def export_data_to_excel(nclicks, table1):
@@ -356,8 +343,7 @@ def export_data_to_excel(nclicks, table1):
 
         add_transactions_to_db(df_out, test_par=GenSet.test_par)
 
-        # df_out.to_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx', index=False)
-        return "Data Submitted"
+        return True
 
 
 # Update the index
@@ -385,15 +371,13 @@ def run():
         df_rabo = ReadRabo().run(filenames_rabobank)
         df_rabo = FindCategory().run(df_rabo, 'Rabobank')
         add_transactions_to_db(df_rabo, test_par=GenSet.test_par)
-        # StoreResults().run(df_rabo)
 
     if filenames_asn_bank:
         df_asn = ReadAsn().run(filenames_asn_bank)
         df_asn = FindCategory().run(df_asn, 'ASN Bank')
         add_transactions_to_db(df_asn, test_par=GenSet.test_par)
-        # StoreResults().run(df_asn)
 
-    app.run_server(debug=True)
+    app.run_server(debug=GenSet.debug)
 
 
 if __name__ == '__main__':
