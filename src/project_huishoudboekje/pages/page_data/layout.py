@@ -37,7 +37,6 @@ def create_layout(navbar, df_data, df_categories):
             is_open=False,
             size='xl'
         ),
-        # todo: open modal instead of showing text
         html.Button(id="save-button", n_clicks=0, children="Save",
                     style=button_style),
         dbc.Modal(

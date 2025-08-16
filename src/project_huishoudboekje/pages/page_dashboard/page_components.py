@@ -48,7 +48,15 @@ def get_page_1_table_actuals(month_names):
                 {"if": {"column_id": "Total"}, "fontWeight": "bold",
                  'backgroundColor': px.colors.qualitative.Pastel2[2]},
                 {'if': {'filter_query': '{{CATEGORY}} = {}'.format("Total"),},
-                 'backgroundColor': px.colors.qualitative.Set2[2], 'color': 'white'}
+                 'backgroundColor': px.colors.qualitative.Set2[2], 'color': 'white'},
+                {'if': {'state': 'selected', 'row_index': 'odd'},
+                 'backgroundColor': 'rgb(220, 220, 220)',
+                 "border": "0px",
+                 },
+                {'if': {'state': 'selected', 'row_index': 'even'},
+                 'backgroundColor': 'white',
+                 "border": "0px",
+                 }
             ],
             style_header={'backgroundColor': px.colors.qualitative.Dark2[2], 'fontWeight': 'bold', 'color': 'white'}
         ),
@@ -72,7 +80,15 @@ def get_page_1_table_budget(month_names):
                 {"if": {"column_id": "Total"}, "fontWeight": "bold",
                  'backgroundColor': px.colors.qualitative.Pastel2[2]},
                 {'if': {'filter_query': '{{CATEGORY}} = {}'.format("Total"),},
-                 'backgroundColor': px.colors.qualitative.Set2[2], 'color': 'white'}
+                 'backgroundColor': px.colors.qualitative.Set2[2], 'color': 'white'},
+                {'if': {'state': 'selected', 'row_index': 'odd'},
+                 'backgroundColor': 'rgb(220, 220, 220)',
+                 "border": "0px",
+                 },
+                {'if': {'state': 'selected', 'row_index': 'even'},
+                 'backgroundColor': 'white',
+                 "border": "0px",
+                 }
             ],
             style_header={'backgroundColor': px.colors.qualitative.Dark2[2], 'fontWeight': 'bold', 'color': 'white'},
         ),

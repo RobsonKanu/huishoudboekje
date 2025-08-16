@@ -8,10 +8,11 @@ from project_huishoudboekje.config import TableSettings
 
 
 button_style = {
-    'backgroundColor': px.colors.qualitative.Pastel2[2],
+    'backgroundColor': px.colors.qualitative.Dark2[2],
     'font-family': 'sans-serif',
     'font-size': '14px',
     'border': 'none',
+    'color': 'white',
     'width': '200px',
     'border-radius': '5px',
     'margin-left': '2px',
@@ -45,7 +46,13 @@ def create_dash_table_data(df_data, df_categories):
             style_header={'backgroundColor': px.colors.qualitative.Pastel2[2], 'fontWeight': 'bold'},
             style_as_list_view=True,
             style_cell={'padding': '1px', 'font_family': 'sans-serif', 'font_size': '12px'},
-            style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(220, 220, 220)'}],
+            style_data_conditional=[
+                {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(220, 220, 220)'},
+                {'if': {'state': 'selected'},
+                 'backgroundColor': px.colors.qualitative.Pastel2[2],
+                 "border": "1px solid rgb(117,112,179)",
+                 },
+            ],
             css=[{"selector": ".show-hide", "rule": "display: none"},
                  {"selector": ".Select-menu-outer", "rule": "display: block !important"}],
             page_current=0,

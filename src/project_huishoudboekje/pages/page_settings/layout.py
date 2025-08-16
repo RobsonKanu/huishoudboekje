@@ -84,10 +84,6 @@ def create_layout(navbar):
                                 'textAlign': 'center'},
                     style_data_conditional=[
                         {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(220, 220, 220)'},
-                        # {'if': {'column_id': 'begin_year'}, 'textAlign': 'center'},
-                        # {'if': {'column_id': 'end_year'}, 'textAlign': 'center'},
-                        # {'if': {'column_id': 'remove'}, 'textAlign': 'center'},
-                        # {'if': {'column_id': 'edit'}, 'textAlign': 'center'},
                         {'if': {'state': 'selected', 'row_index': 'odd'},
                          'backgroundColor': 'rgb(220, 220, 220)',
                          "border": "0px",
