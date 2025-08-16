@@ -65,8 +65,8 @@ def parse_contents_file_import(contents, filename):
 
 
 def group_data_for_table(df, selected_value, values_col, month_names):
-    df_sel = pd.pivot_table(df[df.GROUP == selected_value], values=values_col,
-                                       index=['CATEGORY'], columns=['YEAR_MONTH'], aggfunc='sum').reset_index()
+    df_sel = pd.pivot_table(df[df.GROUP == selected_value], values=values_col, index=['CATEGORY'],
+                            columns=['YEAR_MONTH'], aggfunc='sum').reset_index()
 
     for col in set(month_names) - set(df_sel.columns):
         df_sel[col] = 0.0

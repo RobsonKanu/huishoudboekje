@@ -3,7 +3,6 @@ import os
 import uuid
 import pandas as pd
 
-from datetime import date
 from dash import Dash, html, dcc, ctx
 from dash.dependencies import Input, Output, State
 
@@ -49,7 +48,7 @@ df_categories = df_categories[(df_categories.begin_year <= GenSet.year_selected)
 
 df_categories.columns = df_categories.columns.str.upper()
 
-df_budget = prepare_data_budget(df_analysis['DATE'].max(), GenSet.year_selected)
+df_budget = prepare_data_budget(pd.offsets.MonthEnd().rollforward(df_analysis['DATE'].max()), GenSet.year_selected)
 
 # Initialize app
 app = Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=AppSettings().style_sheet)
@@ -255,7 +254,7 @@ def create_table_output(view_value):
     df_act = prepare_data(df_raw)
 
     if view_value == 'YTD':
-        ref_date = date.today().replace(day=1)
+        ref_date = pd.offsets.MonthEnd().rollforward(df_raw.DATE.max())
 
         df_bud = prepare_data_budget(ref_date=ref_date,
                                      sel_year=GenSet.year_selected,
