@@ -32,14 +32,12 @@ class FindCategory(object):
         df = df[((df['CATEGORY'] == 'Niet-gecategoriseerd') | ((df['DATE'].dt.year >= df['begin_year']) & (
                 df['DATE'].dt.year <= df['end_year'])))].drop(columns=['begin_year', 'end_year']).copy()
 
-        return df.set_index('TRANS_ID').reindex(
-            columns=['DATE', 'SOURCE', 'TRANSACTION_TYPE', 'FINANCIAL_TYPE', 'PARTY', 'AMOUNT',
-                     'CATEGORY', 'ANALYSE_IND', 'GROUP'])
+        return df
+
 
     def assign_category(self, df):
 
         df_proc = read_sql_table_transactions(test_par=GenSet.test_par)
-        # df_proc = pd.read_excel(GenSet.project_path / f'data/processed/transactions{GenSet.test_par}.xlsx')
 
         for idx in df.index:
 

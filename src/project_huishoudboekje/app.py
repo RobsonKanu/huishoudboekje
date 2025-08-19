@@ -28,6 +28,19 @@ from project_huishoudboekje.find_category import FindCategory
 month_names = [f'{GenSet.year_selected}-0' + str(i) for i in list(range(1, 10))] + [
     f'{GenSet.year_selected}-' + str(i) for i in list(range(10, 13))]
 
+filenames_rabobank = next(os.walk(GenSet.project_path / f'data/Rabobank'), (None, None, []))[2]
+filenames_asn_bank = next(os.walk(GenSet.project_path / f'data/ASN Bank'), (None, None, []))[2]
+
+if filenames_rabobank:
+    df_rabo = ReadRabo().run(filenames_rabobank)
+    df_rabo = FindCategory().run(df_rabo, 'Rabobank')
+    add_transactions_to_db(df_rabo, test_par=GenSet.test_par)
+
+if filenames_asn_bank:
+    df_asn = ReadAsn().run(filenames_asn_bank)
+    df_asn = FindCategory().run(df_asn, 'ASN Bank')
+    add_transactions_to_db(df_asn, test_par=GenSet.test_par)
+
 # Load data transactions
 df_data = read_sql_table_transactions(year=GenSet.year_selected, test_par=GenSet.test_par).sort_values(
     by='DATE', ascending=False)
@@ -363,18 +376,6 @@ def display_page(pathname):
 
 
 def run():
-    filenames_rabobank = next(os.walk(GenSet.project_path / f'data/Rabobank'), (None, None, []))[2]
-    filenames_asn_bank = next(os.walk(GenSet.project_path / f'data/ASN Bank'), (None, None, []))[2]
-
-    if filenames_rabobank:
-        df_rabo = ReadRabo().run(filenames_rabobank)
-        df_rabo = FindCategory().run(df_rabo, 'Rabobank')
-        add_transactions_to_db(df_rabo, test_par=GenSet.test_par)
-
-    if filenames_asn_bank:
-        df_asn = ReadAsn().run(filenames_asn_bank)
-        df_asn = FindCategory().run(df_asn, 'ASN Bank')
-        add_transactions_to_db(df_asn, test_par=GenSet.test_par)
 
     app.run_server(debug=GenSet.debug)
 
