@@ -37,7 +37,7 @@ class FindCategory(object):
 
     def assign_category(self, df):
 
-        df_proc = read_sql_table_transactions(test_par=GenSet.test_par)
+        df_proc = read_sql_table_transactions(year=GenSet.year_selected, test_par=GenSet.test_par)
 
         for idx in df.index:
 
