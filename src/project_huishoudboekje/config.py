@@ -9,7 +9,7 @@ class GeneralSettings(object):
 
     project_path = Path(r'C:\Users\robsc\Documents\Analyse\Huishoudboekje')
 
-    year_selected = 2025
+    year_selected = 2026
 
     test_par = ''  # use '_test' for test and '' for production
     debug = False
