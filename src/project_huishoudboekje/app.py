@@ -377,7 +377,7 @@ def display_page(pathname):
 
 def run():
 
-    app.run_server(debug=GenSet.debug)
+    app.run(debug=GenSet.debug)
 
 
 if __name__ == '__main__':
