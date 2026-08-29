@@ -15,10 +15,11 @@ def prepare_data(df):
     # Create year-month column
     df_analysis['YEAR_MONTH'] = pd.DatetimeIndex(df_analysis.DATE).strftime("%Y-%m")
 
-    # Create new amount column
-    df_analysis['AMOUNT_NW'] = df_analysis.apply(
-        lambda x: -x['AMOUNT'] if ((x['FINANCIAL_TYPE'] == 'credit') & (x['GROUP'] != 'Inkomsten')) | (
-                (x['FINANCIAL_TYPE'] == 'debet') & (x['GROUP'] == 'Inkomsten')) else x['AMOUNT'], axis=1)
+    # Create new amount column (vectorized equivalent of the previous row-wise .apply)
+    is_income = df_analysis['GROUP'] == 'Inkomsten'
+    is_credit = df_analysis['FINANCIAL_TYPE'] == 'credit'
+    flip_sign = (is_credit & ~is_income) | (~is_credit & is_income)
+    df_analysis['AMOUNT_NW'] = df_analysis['AMOUNT'].where(~flip_sign, -df_analysis['AMOUNT'])
 
     # Create income indicator
     df_analysis['INCOME_IND'] = df['GROUP'].apply(lambda x: x if x == 'Inkomsten' else 'Uitgaven')
@@ -32,7 +33,17 @@ def prepare_data_budget(ref_date, sel_year, exclude_income=False, rename_budget=
     df['DATE'] = pd.to_datetime(df['YEAR_MONTH'], format='%Y-%m')
 
     if rename_budget:
-        df['AMOUNT_NW'] = df.apply(lambda x: x['BUDGET'] if x['GROUP'] == 'Inkomsten' else x['BUDGET'], axis=1)
+        # NOTE: both branches of the original if/x['GROUP']=='Inkomsten'/else here returned
+        # x['BUDGET'] unchanged, so the condition was a no-op. Left the *behavior* identical
+        # (BUDGET values are presumably always entered as positive "planned amount" regardless
+        # of group) but simplified the dead branching. If budget expenses were actually meant to
+        # be stored as negative (to match the AMOUNT_NW sign convention for actuals in
+        # prepare_data(), where expenses come out positive and only flip sign for
+        # refunds/reversals), flip this to:
+        #   df['AMOUNT_NW'] = df['BUDGET'].where(df['GROUP'] == 'Inkomsten', -df['BUDGET'])
+        # I didn't make that change since it would alter numbers in your budget-vs-actual views
+        # and I'm not certain which convention your BUDGET data was entered under.
+        df['AMOUNT_NW'] = df['BUDGET']
 
     if exclude_income:
         df = df[df.GROUP != 'Inkomsten'].copy()

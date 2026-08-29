@@ -43,6 +43,7 @@ class ReadAsn(object):
         df['ANALYSE_IND'] = df['TRANSACTION_TYPE'].apply(lambda x: 0 if x == 'NGM' else 1)
 
         # Party
+
         df['PARTY'] = df.iloc[:, 3].fillna('').astype(str) + ' - ' + df.iloc[:, 17].str[1:-1].str.split().str[:3].str.join(sep=" ")
         df['PARTY'] = df['PARTY'].str.strip(' - ')
 

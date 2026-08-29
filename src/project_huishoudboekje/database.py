@@ -2,38 +2,83 @@
 import sqlite3
 import pandas as pd
 
+from contextlib import contextmanager
 from datetime import datetime
 
 from project_huishoudboekje.config import DatabaseSettings, GeneralSettings
 
+# Track whether the schema (CREATE TABLE IF NOT EXISTS ...) has already been ensured
+# for this process, so we don't re-run it on every single query.
+_schema_ready = False
 
-def connect_to_database():
+# Table names are interpolated based on `test_par` (either '' or '_test'). Interpolating
+# arbitrary strings into SQL identifiers is unsafe, so we resolve through this whitelist
+# instead of using the raw value directly in an f-string.
+_TRANSACTIONS_TABLES = {
+    '': 'transactions',
+    '_test': 'transactions_test',
+}
+
+
+def _transactions_table_name(test_par):
     try:
-        with sqlite3.connect(GeneralSettings.project_path / 'data' / DatabaseSettings.database_name) as conn:
-            # interact with database
+        return _TRANSACTIONS_TABLES[test_par]
+    except KeyError:
+        raise ValueError(
+            f"Unknown test_par={test_par!r}; expected one of {list(_TRANSACTIONS_TABLES)}")
 
-            cursor = conn.cursor()
 
-            # execute statements
+@contextmanager
+def db_connection():
+    """Context manager yielding (cursor, conn) for the sqlite database.
+
+    Ensures the schema exists (once per process) and always closes the cursor/connection,
+    even if an exception is raised inside the `with` block. Raises rather than silently
+    swallowing connection errors, so callers don't get a confusing crash further downstream.
+    """
+    global _schema_ready
+
+    conn = sqlite3.connect(GeneralSettings.project_path / 'data' / DatabaseSettings.database_name)
+
+    try:
+        cursor = conn.cursor()
+
+        if not _schema_ready:
             for statement in DatabaseSettings.sql_statements:
                 cursor.execute(statement)
-
-            # commit the changes
             conn.commit()
+            _schema_ready = True
 
-            return cursor, conn
-
+        yield cursor, conn
     except sqlite3.OperationalError as e:
-        print("Failed to open database:", e)
+        raise RuntimeError(f"Failed to access database: {e}") from e
+    finally:
+        conn.close()
+
+
+def connect_to_database():
+    """Deprecated: kept temporarily for backwards compatibility.
+
+    Prefer `with db_connection() as (cursor, conn):` instead, which closes the connection
+    automatically. This function is no longer used elsewhere in this module.
+    """
+    global _schema_ready
+
+    conn = sqlite3.connect(GeneralSettings.project_path / 'data' / DatabaseSettings.database_name)
+    cursor = conn.cursor()
+
+    if not _schema_ready:
+        for statement in DatabaseSettings.sql_statements:
+            cursor.execute(statement)
+        conn.commit()
+        _schema_ready = True
+
+    return cursor, conn
 
 
 def read_sql_table_cats(to_records=True, fill_nan_end_year=False, add_edit_emoji=False, add_remove_emoji=False):
-    cursor, conn = connect_to_database()
-
-    df = pd.read_sql("""SELECT * FROM categories""", conn)
-
-    cursor.close()
-    conn.close()
+    with db_connection() as (cursor, conn):
+        df = pd.read_sql("""SELECT * FROM categories""", conn)
 
     if add_edit_emoji:
         df['edit'] = '✏️'
@@ -51,16 +96,11 @@ def read_sql_table_cats(to_records=True, fill_nan_end_year=False, add_edit_emoji
 
 
 def read_sql_table_budget(year=None, keep_src=False):
-
-    cursor, conn = connect_to_database()
-
-    df = pd.read_sql("""SELECT * FROM budget""", conn)
+    with db_connection() as (cursor, conn):
+        df = pd.read_sql("""SELECT * FROM budget""", conn)
 
     if year:
         df = df[df.year_month.str.startswith(str(year))].copy()
-
-    cursor.close()
-    conn.close()
 
     cols_exclude = ['id'] if keep_src else ['id', 'source_file']
 
@@ -69,109 +109,85 @@ def read_sql_table_budget(year=None, keep_src=False):
 
 
 def files_in_budget():
-
-    cursor, conn = connect_to_database()
-
-    df = pd.read_sql("""SELECT distinct(source_file) FROM budget order by source_file""", conn)
-
-    cursor.close()
-    conn.close()
+    with db_connection() as (cursor, conn):
+        df = pd.read_sql("""SELECT distinct(source_file) FROM budget order by source_file""", conn)
 
     return df.iloc[:, 0].to_list()
 
 
 def delete_files_from_budget(selection):
-    cursor, conn = connect_to_database()
+    with db_connection() as (cursor, conn):
+        for sel in selection:
+            cursor.execute("""DELETE FROM budget where source_file = ?""", (sel,))
 
-    for sel in selection:
-        cursor.execute("""DELETE FROM budget where source_file = ?""", (sel,))
+        conn.commit()
 
-    conn.commit()
-
-    df = pd.read_sql("""SELECT distinct(source_file) FROM budget order by source_file""", conn)
-
-    cursor.close()
-    conn.close()
+        df = pd.read_sql("""SELECT distinct(source_file) FROM budget order by source_file""", conn)
 
     return df.iloc[:, 0].to_list()
 
 
 def remove_category(row):
-    cursor, conn = connect_to_database()
+    with db_connection() as (cursor, conn):
+        sql_remove = """DELETE FROM categories WHERE id=?;"""
 
-    sql_remove = f"""DELETE FROM categories WHERE id=?;"""
-
-    cursor.execute(sql_remove, (f'{row['grouplevel']}_{row['category']}_{row['begin_year']}',))
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+        cursor.execute(sql_remove, (f"{row['grouplevel']}_{row['category']}_{row['begin_year']}",))
+        conn.commit()
 
 
 def add_category(params):
-    cursor, conn = connect_to_database()
+    with db_connection() as (cursor, conn):
+        sql_add = """INSERT INTO categories VALUES (?, ?, ?, ?, ?);"""
 
-    sql_add = f"""INSERT INTO categories VALUES (?, ?, ?, ?, ?);"""
-
-    cursor.execute(sql_add, params)
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+        cursor.execute(sql_add, params)
+        conn.commit()
 
 
 def add_budget_file_to_db(df, filename):
-    cursor, conn = connect_to_database()
+    with db_connection() as (cursor, conn):
+        df['id'] = df['GROUP'] + '_' + df['CATEGORY'] + '_' + df['YEAR_MONTH']
+        df['source_file'] = filename
 
-    df['id'] = df['GROUP'] + '_' + df['CATEGORY'] + '_' + df['YEAR_MONTH']
-    df['source_file'] = filename
+        df[['id', 'GROUP', 'CATEGORY', 'YEAR_MONTH', 'BUDGET', 'source_file']].rename(
+            columns={'GROUP': 'grouplevel',
+                     'CATEGORY': 'category',
+                     'YEAR_MONTH': 'year_month',
+                     'BUDGET': 'amount'}).to_sql(name='budget',
+                                                 con=conn,
+                                                 if_exists='append',
+                                                 index=False)
 
-    df[['id', 'GROUP', 'CATEGORY', 'YEAR_MONTH', 'BUDGET', 'source_file']].rename(
-        columns={'GROUP': 'grouplevel',
-                 'CATEGORY': 'category',
-                 'YEAR_MONTH': 'year_month',
-                 'BUDGET': 'amount'}).to_sql(name='budget',
-                                             con=conn,
-                                             if_exists='append',
-                                             index=False)
-
-    conn.commit()
-    cursor.close()
-    conn.close()
+        conn.commit()
 
 
 def add_transactions_to_db(df, test_par=""):
+    table_name = _transactions_table_name(test_par)
 
-    cursor, conn = connect_to_database()
+    with db_connection() as (cursor, conn):
+        df['TS_CHANGED'] = datetime.now().timestamp()
 
-    df['TS_CHANGED'] = datetime.now().timestamp()
+        df.rename(columns={'GROUP': 'GROUPLEVEL'}).astype({'TRANS_ID': 'str'}).to_sql(
+            name=table_name,
+            con=conn,
+            if_exists='append',
+            index=False)
 
-    df.rename(columns={'GROUP': 'GROUPLEVEL'}).astype({'TRANS_ID': 'str'}).to_sql(name=f'transactions{test_par}',
-                                                                                  con=conn,
-                                                                                  if_exists='append',
-                                                                                  index=False)
-
-    conn.commit()
-    cursor.close()
-    conn.close()
+        conn.commit()
 
 
 def read_sql_table_transactions(year=None, test_par=""):
+    table_name = _transactions_table_name(test_par)
 
-    cursor, conn = connect_to_database()
-
-    df = pd.read_sql(f"""
-        SELECT * FROM (
-            SELECT *, ROW_NUMBER() OVER(PARTITION BY TRANS_ID ORDER BY TS_CHANGED DESC) 
-            AS rn FROM transactions{test_par}) AS a
-        WHERE rn = 1 
-    """, conn)
+    with db_connection() as (cursor, conn):
+        df = pd.read_sql(f"""
+            SELECT * FROM (
+                SELECT *, ROW_NUMBER() OVER(PARTITION BY TRANS_ID ORDER BY TS_CHANGED DESC) 
+                AS rn FROM {table_name}) AS a
+            WHERE rn = 1 
+        """, conn)
 
     if year:
         df = df[df.DATE.str.startswith(str(year))].copy()
-
-    cursor.close()
-    conn.close()
 
     df['DATE'] = pd.to_datetime(df['DATE'], format='%Y-%m-%d %H:%M:%S')
 

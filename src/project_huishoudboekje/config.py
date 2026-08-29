@@ -1,4 +1,7 @@
 
+import os
+
+from datetime import datetime
 from pathlib import Path
 from dash.dash_table.Format import Format, Group, Symbol, Scheme
 
@@ -7,9 +10,14 @@ import dash_bootstrap_components as dbc
 
 class GeneralSettings(object):
 
-    project_path = Path(r'C:\Users\robsc\Documents\Analyse\Huishoudboekje')
+    # Override with the HUISHOUDBOEKJE_DATA_PATH environment variable so the code doesn't
+    # need to be edited per machine/user. Falls back to the original hardcoded path.
+    project_path = Path(os.environ.get(
+        'HUISHOUDBOEKJE_DATA_PATH', r'C:\Users\robsc\Documents\Analyse\Huishoudboekje'))
 
-    year_selected = 2026
+    # Override with HUISHOUDBOEKJE_YEAR to look at a different year; defaults to the current
+    # year so this no longer needs a manual edit every January.
+    year_selected = int(os.environ.get('HUISHOUDBOEKJE_YEAR', datetime.now().year))
 
     test_par = ''  # use '_test' for test and '' for production
     debug = False

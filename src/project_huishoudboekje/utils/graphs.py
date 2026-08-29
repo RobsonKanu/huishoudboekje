@@ -6,12 +6,11 @@ from project_huishoudboekje.config import FigureSettings
 
 def graph_group_month(df_analysis):
 
-    df_stack = df_analysis[df_analysis.GROUP != 'Inkomsten'].groupby(
-        ['YEAR_MONTH', 'GROUP'])['AMOUNT_NW'].sum().reset_index()
+    grouped = df_analysis[df_analysis.GROUP != 'Inkomsten'].groupby(
+        ['YEAR_MONTH', 'GROUP'])['AMOUNT_NW'].sum()
 
-    df_stack['Percentage'] = df_analysis[df_analysis.GROUP != 'Inkomsten'].groupby(
-        ['YEAR_MONTH', 'GROUP'])['AMOUNT_NW'].sum().groupby(level=0).apply(
-        lambda x: x / float(x.sum())).values
+    df_stack = grouped.reset_index()
+    df_stack['Percentage'] = grouped.groupby(level=0).transform(lambda x: x / x.sum()).values
     df_stack.columns = ['Month', 'Group', 'Amount', 'Percentage']
 
     fig = px.bar(df_stack, x='Month', y='Percentage', color='Group',
