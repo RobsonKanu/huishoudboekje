@@ -3,8 +3,9 @@ import os
 import uuid
 import pandas as pd
 
-from dash import Dash, html, dcc, ctx
+from dash import Dash, html, dcc, ctx, no_update
 from dash.dependencies import Input, Output, State
+from dash.exceptions import PreventUpdate
 
 from project_huishoudboekje.config import AppSettings
 from project_huishoudboekje.database import (
@@ -51,15 +52,27 @@ df_analysis = prepare_data(df_data)
 # Refactor date column
 df_data.DATE = pd.DatetimeIndex(df_data.DATE).strftime("%Y-%m-%d")
 
-# Load categories
-df_categories = read_sql_table_cats(to_records=False, fill_nan_end_year=True).astype(
-    {'begin_year': 'int', 'end_year': 'int'})
+# Load categories (this only seeds the dcc.Store below at startup; callbacks read/refresh
+# the current value via the Store itself, not this module-level variable, so multiple
+# workers or browser tabs never fight over shared Python-process state)
+def _categories_for_store():
+    """Build the GROUP/CATEGORY records used by the Data page's category dropdown,
+    filtered to categories valid for the currently selected year. Called once at startup
+    to seed store-categories, and again by any callback that adds/edits/removes a category
+    so the Data page picks up the change without an app restart."""
+    df = read_sql_table_cats(to_records=False, fill_nan_end_year=True).astype(
+        {'begin_year': 'int', 'end_year': 'int'})
 
-df_categories = df_categories[(df_categories.begin_year <= GenSet.year_selected) & (
-        df_categories.end_year >= GenSet.year_selected)].drop(
-    columns=['begin_year', 'end_year']).rename(columns={'grouplevel': 'group'})
+    df = df[(df.begin_year <= GenSet.year_selected) & (
+            df.end_year >= GenSet.year_selected)].drop(
+        columns=['begin_year', 'end_year']).rename(columns={'grouplevel': 'group'})
 
-df_categories.columns = df_categories.columns.str.upper()
+    df.columns = df.columns.str.upper()
+
+    return df.to_dict('records')
+
+
+df_categories_initial = _categories_for_store()
 
 df_budget = prepare_data_budget(pd.offsets.MonthEnd().rollforward(df_analysis['DATE'].max()), GenSet.year_selected)
 
@@ -68,6 +81,10 @@ app = Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=App
 
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
+    # Holds the current categories table (GROUP/CATEGORY) in the browser tab instead of a
+    # Python-process global, so it's per-session and safe if this ever runs with multiple
+    # workers or multiple tabs open at once.
+    dcc.Store(id='store-categories', data=df_categories_initial),
     html.Div(id='page-content')
 ])
 
@@ -99,6 +116,8 @@ def import_file_and_update_database(list_of_contents, list_of_names):
 
         return get_label_style(lst_source_files)
 
+    raise PreventUpdate
+
 
 # Settings: no file selected to remove
 @app.callback(Output('modal-remove-file', 'is_open', allow_duplicate=True),
@@ -107,6 +126,8 @@ def import_file_and_update_database(list_of_contents, list_of_names):
 def close_no_selection(n_clicks):
     if n_clicks:
         return False
+
+    raise PreventUpdate
 
 
 # Settings: delete file(s) from budget and update database
@@ -121,6 +142,8 @@ def del_files_from_budget(n_clicks, selection):
         src_files = delete_files_from_budget(selection)
 
         return False, get_label_style(src_files), []
+
+    raise PreventUpdate
 
 
 # Settings: open modal to confirm if files need to be removed
@@ -141,6 +164,7 @@ def open_modal_remove_files(n_clicks, val):
 # Settings: modal to remove category from table
 @app.callback(Output('modal-remove', 'is_open', allow_duplicate=True),
               Output('table-category', 'data', allow_duplicate=True),
+              Output('store-categories', 'data', allow_duplicate=True),
               Input('yes-remove', 'n_clicks'),
               Input('no-remove', 'n_clicks'),
               State('table-category', 'active_cell'),
@@ -152,13 +176,15 @@ def remove_or_keep_category(ny, nn, active_cell, data):
 
     if nn:
         df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
-        return False, df_cats
+        return False, df_cats, no_update
     if ny:
         remove_category(row)
 
         df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
 
-        return False, df_cats
+        return False, df_cats, _categories_for_store()
+
+    raise PreventUpdate
 
 
 # Settings: open modal to change category
@@ -189,6 +215,7 @@ def open_modal_edit_category(active_cell, data):
 # Settings: submit changes from edit modal
 @app.callback(Output('modal-edit', 'is_open', allow_duplicate=True),
               Output('table-category', 'data', allow_duplicate=True),
+              Output('store-categories', 'data', allow_duplicate=True),
               # Input('close-edit', 'n_clicks'),
               Input('submit-cat-edit', 'n_clicks'),
               State('group-edit', 'value'),
@@ -201,7 +228,7 @@ def open_modal_edit_category(active_cell, data):
 def submit_changes_edit(n2, group, cat, sy, ey, active_cell, data):
     if ctx.triggered_id == 'close-edit':
         df_cats = read_sql_table_cats(add_edit_emoji=True, add_remove_emoji=True)
-        return False, df_cats
+        return False, df_cats, no_update
     else:
         row = data[active_cell['row']]
 
@@ -213,13 +240,14 @@ def submit_changes_edit(n2, group, cat, sy, ey, active_cell, data):
 
         df_cats = read_sql_table_cats(add_edit_emoji=True, add_remove_emoji=True)
 
-        return False, df_cats
+        return False, df_cats, _categories_for_store()
 
 
 # Settings: add new category to database
 @app.callback(
      Output("modal", "is_open"),
      Output('table-category', 'data'),
+     Output('store-categories', 'data'),
      Input("open", "n_clicks"),
      # Input("close", "n_clicks"),
      Input('submit-cat', 'n_clicks'),
@@ -228,6 +256,7 @@ def submit_changes_edit(n2, group, cat, sy, ey, active_cell, data):
      State('category', 'value'),
      State('startyear', 'value'),
      State('endyear', 'value'),
+     prevent_initial_call=True,
 )
 def add_new_category(n1, n3, is_open, group, cat, startyear, endyear):
 
@@ -238,7 +267,7 @@ def add_new_category(n1, n3, is_open, group, cat, startyear, endyear):
     else:
         button_id = ctx.triggered_id
 
-    if button_id == 'submit-cat':
+    if button_id == 'submit-cat' and n3:
         # todo: check input
 
         params = (f'{group}_{cat}_{startyear}', group, cat, startyear, endyear)
@@ -246,12 +275,12 @@ def add_new_category(n1, n3, is_open, group, cat, startyear, endyear):
 
         df_cats = read_sql_table_cats(add_remove_emoji=True, add_edit_emoji=True)
 
-        return not is_open, df_cats
+        return not is_open, df_cats, _categories_for_store()
 
-    if button_id == 'open' or button_id == 'close':
-        return not is_open, df_cats
+    if button_id == 'open' and n1:
+        return not is_open, df_cats, no_update
 
-    return is_open, df_cats
+    return is_open, df_cats, no_update
 
 
 # Budget vs Actuals: table with sum per category for actuals and budget
@@ -340,10 +369,11 @@ def show_duplicates(n_clicks, table):
 @app.callback(
     Output('modal-transactions-saved', 'is_open'),
     Input("save-button", "n_clicks"),
-    State("page-2-content", "data"))
-def export_data_to_excel(nclicks, table1):
+    State("page-2-content", "data"),
+    State('store-categories', 'data'))
+def export_data_to_excel(nclicks, table1, categories_data):
     if nclicks > 0:
-        global df_categories
+        df_categories = pd.DataFrame(categories_data)
 
         df_out = pd.DataFrame(table1)
         df_out['DATE'] = pd.to_datetime(df_out['DATE'], format='%Y-%m-%d')
@@ -357,12 +387,17 @@ def export_data_to_excel(nclicks, table1):
 
         return True
 
+    raise PreventUpdate
+
 
 # Update the index
 @app.callback(
     Output('page-content', 'children'),
-    Input('url', 'pathname'))
-def display_page(pathname):
+    Input('url', 'pathname'),
+    State('store-categories', 'data'))
+def display_page(pathname, categories_data):
+    df_categories = pd.DataFrame(categories_data)
+
     if pathname == '/dashboard':
         return layout_dashboard.create_layout(navbar, df_analysis, month_names)
     elif pathname == '/data':

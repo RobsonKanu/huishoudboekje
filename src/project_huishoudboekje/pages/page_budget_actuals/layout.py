@@ -62,14 +62,14 @@ def create_layout(navbar, df_budget, df_analysis):
         html.Br(),
         html.Div([
             html.Div([
-                dcc.Graph(id='total-graph', figure=fig_totals_actual, style={'width': width_figures, 'height': '25vh'}),
-                dcc.Graph(id='total-graph', figure=fig_totals_budget, style={'width': width_figures, 'height': '25vh'}),
-                dcc.Graph(id='total-graph', figure=fig_totals_delta, style={'width': width_figures, 'height': '25vh'})
+                dcc.Graph(id='total-graph-actual', figure=fig_totals_actual, style={'width': width_figures, 'height': '25vh'}),
+                dcc.Graph(id='total-graph-budget', figure=fig_totals_budget, style={'width': width_figures, 'height': '25vh'}),
+                dcc.Graph(id='total-graph-delta', figure=fig_totals_delta, style={'width': width_figures, 'height': '25vh'})
             ], style={'width': '29%', 'margin-left': '10px', 'margin-right': '0px'}),
             html.Div([
-                dcc.Graph(id='group-graph', figure=fig_groups_actual, style={'width': width_figures, 'height': '25vh'}),
-                dcc.Graph(id='group-graph', figure=fig_groups_budget, style={'width': width_figures, 'height': '25vh'}),
-                dcc.Graph(id='group-graph', figure=fig_groups_delta, style={'width': width_figures, 'height': '25vh'})
+                dcc.Graph(id='group-graph-actual', figure=fig_groups_actual, style={'width': width_figures, 'height': '25vh'}),
+                dcc.Graph(id='group-graph-budget', figure=fig_groups_budget, style={'width': width_figures, 'height': '25vh'}),
+                dcc.Graph(id='group-graph-delta', figure=fig_groups_delta, style={'width': width_figures, 'height': '25vh'})
             ], style={'width': '29%', 'margin-left': '10px', 'margin-right': '0px'}),
             html.Div([
                 html.Div([

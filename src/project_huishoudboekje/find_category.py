@@ -1,7 +1,8 @@
 
 import uuid
-import difflib
 import pandas as pd
+
+from rapidfuzz import process, fuzz
 
 from project_huishoudboekje.config import GeneralSettings as GenSet
 from project_huishoudboekje.prep_utils import check_previous_month, find_most_likely_category
@@ -46,10 +47,13 @@ class FindCategory(object):
                 amount = df.loc[idx, 'AMOUNT']
                 fin_type = df.loc[idx, 'FINANCIAL_TYPE']
 
-                matches = difflib.get_close_matches(party, df_proc['PARTY'], n=3, cutoff=.6)
+                # rapidfuzz score_cutoff is on a 0-100 scale; 60 is equivalent to difflib's
+                # previous cutoff=.6. Same "top 3 closest matches" semantics as before.
+                matches = process.extract(party, df_proc['PARTY'], scorer=fuzz.ratio, limit=3, score_cutoff=60)
 
                 if matches:
-                    df_match = df_proc.loc[df_proc.PARTY.isin(matches), :]
+                    matched_parties = [m[0] for m in matches]
+                    df_match = df_proc.loc[df_proc.PARTY.isin(matched_parties), :]
 
                     df, success = check_previous_month(df_match, df, idx, amount, fin_type)
 
